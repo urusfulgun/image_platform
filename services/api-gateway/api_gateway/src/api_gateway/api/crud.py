@@ -89,30 +89,48 @@ async def update_project(
     session: AsyncSession = Depends(get_db_session),
     user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    # 1. Fetch the existing project
+    # 1. Fetch the existing project within the ownership boundary
+    # This prevents users from even knowing if a project exists if they don't own it
     stmt = select(Project).where(
         and_(Project.project_id == project_id, Project.owner_id == user_id)
     )
     result: TupleResult = await session.exec(stmt)
-    db_project: Project | None = result.scalar_one_or_none()
+    db_project: Project = result.scalar_one_or_none()
 
     if not db_project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found or you are not the owner",
+            detail="Project not found or you do not have permission to modify it.",
         )
 
-    # 2. Extract only the fields provided in the request
+    # 2. Extract only the fields explicitly provided in the request
+    # exclude_unset=True is vital for PATCH to avoid overwriting with defaults
     update_data = data.model_dump(exclude_unset=True)
 
-    # 3. Apply updates and set the new timestamp
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid update fields provided."
+        )
+
+    # 3. Apply updates to the SQLModel instance
+    # This automatically handles the mapping of dictionary keys to model attributes
     db_project.sqlmodel_update(update_data)
+    
+    # 4. Update the audit timestamp
     db_project.updated_at = datetime.now(timezone.utc)
 
-    # 4. Save and return
-    session.add(db_project)
-    await session.commit()
-    await session.refresh(db_project)
+    # 5. Persist the changes
+    try:
+        session.add(db_project)
+        await session.commit()
+        await session.refresh(db_project)
+    except Exception:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while updating the project."
+        )
 
     return db_project
 
