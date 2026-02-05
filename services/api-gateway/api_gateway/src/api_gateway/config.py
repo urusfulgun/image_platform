@@ -35,6 +35,8 @@ class GatewaySettings(BaseSettings):
     # Security Validation
     # Public Key from Keycloak to verify JWS signatures on tokens
     OIDC_JWKS_URL: HttpUrl
+    ALLOWED_ISSUER: HttpUrl
+    KEYCLOAK_PUBLIC_KEY: SecretStr
     # Audience validation for tokens
     EXPECTED_AUDIENCE: str = "account"
 

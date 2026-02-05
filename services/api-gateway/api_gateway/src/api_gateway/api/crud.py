@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import ValidationError
 from sqlmodel import or_, select, and_, exists
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -29,9 +29,38 @@ router = APIRouter(prefix="/projects", tags=["Project Aggregate"])
 
 
 # Helper for current user (Extracted from DPoP Token by middleware)
-async def get_current_user_id() -> uuid.UUID:
-    # Logic to return user_id from shadow_users table
-    ...
+async def get_current_user_id(
+    request: Request,
+    session: AsyncSession = Depends(get_db_session)
+) -> uuid.UUID:
+    """
+    Extracts the 'sub' (Keycloak ID) from the request state (set by Auth Middleware)
+    and resolves it to the internal internal UUID7 user_id.
+    """
+    # 1. Retrieve the 'sub' claim attached to the request by the Auth Middleware
+    # The middleware should have already verified the JWT and DPoP signature.
+    external_sub = getattr(request.state, "user_sub", None)
+    
+    if not external_sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User identity could not be verified from token."
+        )
+
+    # 2. Look up the internal user_id in the shadow_users table
+    # This ensures we are working with our native UUID7 throughout the aggregate.
+    stmt = select(ShadowUser.user_id).where(ShadowUser.keycloak_sub == external_sub)
+    result: TupleResult = await session.exec(stmt)
+    internal_user_id: uuid.UUID = result.scalar_one_or_none()
+
+    if internal_user_id is None:
+        # This happens if the Kafka sync from Keycloak hasn't finished yet
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile synchronization in progress. Please retry."
+        )
+
+    return internal_user_id
 
 
 # --- Project Operations ---
