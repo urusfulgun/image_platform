@@ -4,6 +4,7 @@ import hashlib
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from joserfc import jwt, jwk
+from joserfc.jwk import thumbprint
 from joserfc.errors import JoseError
 from api_gateway.config import settings
 
@@ -21,66 +22,64 @@ REQUIRED_CLAIMS = {
 
 class DPoPMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 1. Extract Headers
         auth_header = request.headers.get("Authorization")
         dpop_proof = request.headers.get("DPoP")
 
         if not auth_header or not auth_header.startswith("DPoP "):
-            # If your API allows public routes, skip. Otherwise, 401.
             return await call_next(request)
 
         try:
-            # 2. Extract Access Token
             access_token = auth_header.split(" ")[1]
+            key = jwk.import_key(KEYCLOAK_PUBLIC_KEY)
 
-            # 3. Validate Access Token (JWT)
-            # We check the signature, issuer, and 'cnf' claim for DPoP binding
-            header_key = jwk.import_key(KEYCLOAK_PUBLIC_KEY)
-            decoded_token = jwt.decode(access_token, header_key, algorithms=["RS256"])
+            # 1. Decode and verify the Access Token signature
+            # joserfc returns a Token object
+            token = jwt.decode(access_token, key)
+            
+            # 2. Manual Claim Validation in joserfc
+            now = int(time.time())
+            claims = token.claims
+            
+            # Basic validation: expiry and issuer
+            if claims.get("iss") != ALLOWED_ISSUER:
+                raise HTTPException(status_code=401, detail="Invalid issuer")
+            if claims.get("exp", 0) < now:
+                raise HTTPException(status_code=401, detail="Token expired")
 
-            # Verify basic claims
-            decoded_token.validate_claims(issuer=ALLOWED_ISSUER)
-
-            # 4. DPoP Proof Validation (The 'cnf' check)
-            # Access token must contain the thumbprint (jkt) of the DPoP key
-            cnf = decoded_token.claims.get("cnf")
+            # 3. DPoP Binding check (cnf claim)
+            cnf = claims.get("cnf")
             if not cnf or "jkt" not in cnf:
                 raise HTTPException(status_code=401, detail="Token is not DPoP bound")
 
-            # 5. Validate the DPoP Proof Header itself
-            # The proof is a JWT signed by the client's private key
-            proof_jwt = jwt.decode(
-                dpop_proof, None
-            )  # Decode header first to get public key
-            proof_jwk = proof_jwt.header.get("jwk")
+            # 4. Decode the Proof Header to get the ephemeral Public Key (JWK)
+            # We don't verify the signature yet; we just extract the key
+            unverified_proof = jwt.decode(dpop_proof, None)
+            proof_jwk_dict = unverified_proof.header.get("jwk")
+            if not proof_jwk_dict:
+                raise HTTPException(status_code=401, detail="DPoP proof missing JWK header")
+            
+            proof_jwk = jwk.import_key(proof_jwk_dict)
 
-            # Re-verify the proof signature using the JWK provided in its header
-            # and verify it matches the thumbprint in the Access Token
-            verified_proof = jwt.decode(dpop_proof, jwk.import_key(proof_jwk))
-
-            # Compute thumbprint of the JWK to verify against 'cnf'
-            # (Note: joserfc provides thumbprint helpers)
-            jkt = jwk.thumbprint(proof_jwk, "sha256")
+            # 5. Verify the DPoP Proof signature with its own embedded key
+            verified_proof = jwt.decode(dpop_proof, proof_jwk)
+            
+            # 6. Verify thumbprint (jkt) matches the Access Token cnf
+            # In joserfc, thumbprint is a standalone utility
+            jkt = thumbprint(proof_jwk, "sha256")
             if jkt != cnf["jkt"]:
                 raise HTTPException(status_code=401, detail="DPoP key mismatch")
 
-            # 6. Verify Proof Claims (htu, htm)
-            # 'htu' (HTTP URL) and 'htm' (HTTP Method) must match the current request
-            expected_htu = str(request.url).split("?")[0]  # Strip query params
-            if (
-                verified_proof.claims.get("htu") != expected_htu
-                or verified_proof.claims.get("htm") != request.method
-            ):
-                raise HTTPException(
-                    status_code=401, detail="DPoP proof claims mismatch"
-                )
+            # 7. Verify htu and htm
+            current_htu = str(request.url).split('?')[0]
+            if verified_proof.claims.get("htu") != current_htu or \
+               verified_proof.claims.get("htm") != request.method:
+                raise HTTPException(status_code=401, detail="DPoP proof target mismatch")
 
-            # 7. Success: Attach 'sub' to request state
-            request.state.user_sub = decoded_token.claims.get("sub")
+            # Success: Inject into request state
+            request.state.user_sub = claims.get("sub")
 
-        except JoseError as e:
-            raise HTTPException(status_code=401, detail=f"Invalid Token: {str(e)}")
         except Exception as e:
-            raise HTTPException(status_code=401, detail="Authentication failed")
+            # Catching joserfc.errors.JoseError and others
+            raise HTTPException(status_code=401, detail=f"Auth error: {str(e)}")
 
         return await call_next(request)
