@@ -95,6 +95,91 @@ services:
     #   timeout: 10s
     #   retries: 3
     #   start_period: 40s
+  
+  postgres:
+    restart: always
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=authentication
+      - POSTGRES_PASSWORD=abc123
+      - POSTGRES_DB=authentication
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+    # Map your local script to the magic init folder in the container
+      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init-db:/docker-entrypoint-initdb.d
+    # Persist your data so it doesn't disappear when the container stops
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - proxynet
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    restart: always
+    ports:
+      - "8888:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: example@example.com
+      PGADMIN_DEFAULT_PASSWORD: password#11
+    depends_on:
+      - postgres
+    networks:
+      - proxynet
+  
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092" # Plaintext
+      - "9093:9093" # SSL (mTLS)
+    environment:
+        # Fixes the error in your logs:
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+        
+       # Additional stability for single-node setups:
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      # --- KRaft Mode Setup ---
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9094
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      
+      # --- Listeners ---
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,SSL://:9093,CONTROLLER://:9094
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,SSL://kafka:9093
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,SSL:SSL,CONTROLLER:PLAINTEXT
+      
+      # --- mTLS / SSL Settings ---
+      - KAFKA_SSL_KEYSTORE_FILENAME=kafka.kafka-1.keystore.pkcs12
+      - KAFKA_SSL_KEYSTORE_CREDENTIALS=kafka-1_keystore_creds
+      - KAFKA_SSL_KEY_CREDENTIALS=kafka-1_sslkey_creds
+
+      - KAFKA_SSL_TRUSTSTORE_FILENAME=kafka.kafka-1.truststore.pkcs12
+      - KAFKA_SSL_TRUSTSTORE_CREDENTIALS=kafka-1_truststore_creds
+
+      # FIX: Official Apache image requires these exact names to pass the "ensure" check
+
+      # FIX: Point these to the FILE path, not the password string
+      
+      # Forces Python/Kafka-UI to provide their own certificates
+      - KAFKA_SSL_CLIENT_AUTH=required
+      
+      # Security Overrides for Local Development
+      - KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM=
+      - KAFKA_SSL_PROTOCOL=TLSv1.3
+      
+      # KRaft Required
+      - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - ./persistent_data/kafka:/var/lib/kafka/data
+      - ./secrets/kafka:/etc/kafka/secrets
+    networks:
+      - proxynet
     
 networks:
   proxynet:

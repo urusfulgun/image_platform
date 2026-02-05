@@ -1,4 +1,4 @@
-from pydantic import Field, SecretStr, HttpUrl
+from pydantic import Field, SecretStr, HttpUrl, FilePath
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,6 +6,8 @@ class GatewaySettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
+    CA_CERTIFICATE_PATH: FilePath
 
     # Database: Shadow Users & Project Metadata
     POSTGRES_USER: SecretStr
@@ -25,6 +27,10 @@ class GatewaySettings(BaseSettings):
     KAFKA_BOOTSTRAP_SERVERS: str = "kafka:9092"
     KAFKA_TOPIC_USER_REGISTRATION: str = "identity.user.registered"
     KAFKA_TOPIC_BATCH_PROCESS: str = "image.batch.created"
+    KAFKA_TOPIC_BATCH_PROCESS_DLQ: str = "image.batch.dlq"
+    KAFKA_CA_CERTIFICATE_PATH: FilePath
+    KAFKA_CERTIFICATE: FilePath
+    KAFKA_KEYFILE: FilePath
 
     # Security Validation
     # Public Key from Keycloak to verify JWS signatures on tokens
@@ -34,3 +40,30 @@ class GatewaySettings(BaseSettings):
 
 
 settings = GatewaySettings()
+
+
+RUSTFS_PARAMS = {
+    "endpoint_url": settings.S3_ENDPOINT_URL,
+    "aws_access_key_id": settings.S3_ACCESS_KEY,
+    "aws_secret_access_key": settings.S3_SECRET_KEY,
+    "region_name": settings.S3_REGION,
+    "verify": settings.CA_CERTIFICATE_PATH,
+}
+
+LIFECYCLE_CONFIG = {
+    'Rules': [
+        {
+            'ID': 'DeleteSoftDeletedFiles',
+            'Status': 'Enabled',
+            'Filter': {
+                'Tag': {
+                    'Key': 'Status',
+                    'Value': 'Deleted'
+                }
+            },
+            'Expiration': {
+                'Days': 30
+            }
+        }
+    ]
+}
