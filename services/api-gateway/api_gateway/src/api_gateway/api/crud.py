@@ -12,6 +12,7 @@ from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from api_gateway.db import get_db_session
 from api_gateway.domain.models import (
     Project,
+    Batch,
     ImageMetadata,
     ProjectAccessControl,
     ShadowUser,
@@ -193,11 +194,16 @@ async def rename_image(
 ):
     # 1. Fetch image with strict ownership and project context
     # We join or verify the project_id to ensure the image actually belongs to the specified project
-    stmt = select(ImageMetadata).where(
-        and_(
-            ImageMetadata.image_id == image_id,
-            ImageMetadata.project_id == project_id,  # Context safety
-            ImageMetadata.owner_id == user_id,  # Ownership safety
+    # Context Safety: Join Image -> Batch and filter by Project + Owner
+    stmt = (
+        select(ImageMetadata)
+        .join(Batch, ImageMetadata.batch_id == Batch.batch_id)
+        .where(
+            and_(
+                ImageMetadata.image_id == image_id,
+                Batch.project_id == project_id,  # Project Context Lock
+                ImageMetadata.owner_id == user_id,  # Ownership Lock
+            )
         )
     )
 
@@ -292,3 +298,44 @@ async def grant_read_access(
         raise HTTPException(
             status_code=409, detail="User already has access to this project."
         )
+
+
+@router.delete(
+    "/{project_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_image(
+    project_id: uuid.UUID,
+    image_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    # 1. Join with Batch to verify this image belongs to a project owned by the user
+    # Context Safety: Ensure the path Image -> Batch -> Project is valid for this user
+    stmt = (
+        select(ImageMetadata)
+        .join(Batch)
+        .join(Project)
+        .where(
+            and_(
+                ImageMetadata.image_id == image_id,
+                Project.project_id == project_id,
+                Project.owner_id == user_id,
+            )
+        )
+    )
+
+    result: TupleResult = await session.exec(stmt)
+    image = result.scalar_one_or_none()
+
+    if image is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image not found in this project context",
+        )
+
+    # 2. Perform the deletion
+    await session.delete(image)
+    await session.commit()
+
+    # Optional: Send 'ImageDeleted' event to Kafka for S3 cleanup
+    # await producer.send("image-lifecycle", {"action": "DELETE", "id": str(image_id)})
