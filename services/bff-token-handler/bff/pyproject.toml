@@ -1,0 +1,35 @@
+[project]
+name = "bff"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "urusfulgun", email = "panterapardusspelaea48@gmail.com" }
+]
+requires-python = ">=3.14.2"
+dependencies = [
+    "fastapi>=0.128.0",
+    "granian>=2.7.0",
+    "pydantic[email]>=2.12.5",
+    "pydantic-settings>=2.12.0",
+    "httpx>=0.28.0",
+    "joserfc>=1.6.1",
+    "cryptography>=46.0.4",
+    "itsdangerous>=2.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "httpx",
+    "pytest-cov>=6.0.0",    # Coverage for high-security logic
+    "respx>=0.22.0"        # To mock Keycloak OIDC endpoints in tests
+]
+
+[project.scripts]
+bff = "bff:main"
+
+[build-system]
+requires = ["uv_build>=0.9.30,<0.10.0"]
+build-backend = "uv_build"

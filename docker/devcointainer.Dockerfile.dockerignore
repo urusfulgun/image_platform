@@ -1,0 +1,13 @@
+.venv/
+.devcontainer/
+workspaces/
+Makefile
+requirements.txt
+requirements_lock.txt
+.git/
+.gitignore
+.vscode/
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
