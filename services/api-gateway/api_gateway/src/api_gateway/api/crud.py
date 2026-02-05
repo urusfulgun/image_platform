@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
-from sqlmodel import select, and_
+from sqlmodel import or_, select, and_, exists
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.engine.result import Result, ScalarResult, TupleResult
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 
 # Internal modules
 from api_gateway.db import get_db_session
@@ -45,16 +46,23 @@ async def create_project(
     # This user should have been created via the Kafka sync from Keycloak.
     user_stmt = select(ShadowUser).where(ShadowUser.user_id == user_id)
     user_res: TupleResult = await session.exec(user_stmt)
-    if not user_res.scalar_one_or_none():
+    try:
+        user_res.scalar_one()
+    except NoResultFound:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User profile not synchronized. Please try again in a moment."
+            detail="User profile not synchronized. Please try again in a moment.",
+        )
+    except MultipleResultsFound:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Multiple user profiles found. Not Ok.",
         )
 
     # 2. Initialize the Project Aggregate Root
     # We use native uuid.uuid7() and timezone-aware UTC datetimes.
     now = get_utc_now()
-    
+
     project = Project(
         project_id=uuid.uuid7(),
         owner_id=user_id,
@@ -62,7 +70,7 @@ async def create_project(
         target_resolutions=data.target_resolutions,
         naming_template=data.naming_template,
         created_at=now,
-        updated_at=now
+        updated_at=now,
     )
 
     # 3. Persistence
@@ -76,7 +84,7 @@ async def create_project(
         # Log error here
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to initialize project aggregate."
+            detail="Failed to initialize project aggregate.",
         )
 
     return project
@@ -95,12 +103,17 @@ async def update_project(
         and_(Project.project_id == project_id, Project.owner_id == user_id)
     )
     result: TupleResult = await session.exec(stmt)
-    db_project: Project = result.scalar_one_or_none()
-
-    if not db_project:
+    try:
+        db_project: Project = result.scalar_one()
+    except NoResultFound:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found or you do not have permission to modify it.",
+        )
+    except MultipleResultsFound:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Multiple projects not found. Not Ok.",
         )
 
     # 2. Extract only the fields explicitly provided in the request
@@ -110,13 +123,13 @@ async def update_project(
     if not update_data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No valid update fields provided."
+            detail="No valid update fields provided.",
         )
 
     # 3. Apply updates to the SQLModel instance
     # This automatically handles the mapping of dictionary keys to model attributes
     db_project.sqlmodel_update(update_data)
-    
+
     # 4. Update the audit timestamp
     db_project.updated_at = datetime.now(timezone.utc)
 
@@ -129,7 +142,7 @@ async def update_project(
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while updating the project."
+            detail="An error occurred while updating the project.",
         )
 
     return db_project
@@ -141,25 +154,28 @@ async def get_project(
     session: AsyncSession = Depends(get_db_session),
     user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    # Check ownership OR ACL read access
-    stmt = select(Project).where(Project.project_id == project_id)
+    # 1. Combined Query: Find project where (User is Owner) OR (User has ACL Entry)
+    # We use a subquery for the ACL check to keep the main SELECT clean
+    has_acl = exists().where(
+        ProjectAccessControl.project_id == project_id,
+        ProjectAccessControl.grantee_user_id == user_id,
+    )
+
+    stmt = select(Project).where(
+        Project.project_id == project_id, or_(Project.owner_id == user_id, has_acl)
+    )
+
+    # 2. Execute and handle results
     result: TupleResult = await session.exec(stmt)
     project: Project | None = result.scalar_one_or_none()
 
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    # Security check
-    if project.owner_id != user_id:
-        acl_stmt = select(ProjectAccessControl).where(
-            and_(
-                ProjectAccessControl.project_id == project_id,
-                ProjectAccessControl.grantee_user_id == user_id,
-            )
+    # 3. Security-First Response
+    # Returning 404 for both 'Does not exist' and 'No permission' is a security best practice
+    # to avoid revealing the existence of IDs to unauthorized users.
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
         )
-        acl_res = await session.exec(acl_stmt)
-        if not acl_res.scalar_one_or_none():
-            raise HTTPException(status_code=403, detail="Access denied")
 
     return project
 
@@ -175,25 +191,49 @@ async def rename_image(
     session: AsyncSession = Depends(get_db_session),
     user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    # Fetch image and verify project/owner context
+    # 1. Fetch image with strict ownership and project context
+    # We join or verify the project_id to ensure the image actually belongs to the specified project
     stmt = select(ImageMetadata).where(
         and_(
             ImageMetadata.image_id == image_id,
-            ImageMetadata.owner_id == user_id,  # Only owner can rename
+            ImageMetadata.project_id == project_id,  # Context safety
+            ImageMetadata.owner_id == user_id,  # Ownership safety
         )
     )
+
+    # In SQLModel async, session.execute() is the standard for fetching
     result: TupleResult = await session.exec(stmt)
-    image: ImageMetadata = result.scalar_one_or_none()
+    try:
+        image: ImageMetadata = result.scalar_one()
+    except NoResultFound:
+        # We return 404 to avoid leaking whether an image ID exists globally
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image not found in this project.",
+        )
+    except MultipleResultsFound:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Multiple images found. Not Ok",
+        )
 
-    if not image:
-        raise HTTPException(status_code=404, detail="Image metadata not found")
-
+    # 2. Apply the logical rename
+    # The physical S3 key (image_id.avif) remains unchanged
     image.display_name = data.new_display_name
     image.updated_at = datetime.now(timezone.utc)
 
-    session.add(image)
-    await session.commit()
-    await session.refresh(image)
+    # 3. Commit the metadata change
+    try:
+        session.add(image)
+        await session.commit()
+        await session.refresh(image)
+    except Exception:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update image metadata.",
+        )
+
     return image
 
 
