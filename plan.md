@@ -38,6 +38,7 @@ graph TD
         IP[Image Processor: AVIF/HEIC]
         NS[Notification Service]
         MP[Mailpit: Test SMTP]
+        CW[Cleanup Worker: Retention & Scrubber]
     end
 
     %% Auth Flow
@@ -55,13 +56,18 @@ graph TD
     AGW -->|Signed Upload/Download URLs| RFS
     UA -.->|Direct S3 Upload| RFS
     
-    %% Processing Flow
-    AGW -->|Batch Created| KAF
+    %% Processing & Cleanup Flow
+    AGW -->|Batch Created / Item Deleted| KAF
     KAF -->|Process Image| IP
     IP <-->|Read Raw / Write Sizes| RFS
     IP -->|Processing Status| KAF
     KAF -->|Email Report| NS
     NS --> MP
+
+    %% Cleanup Logic
+    KAF -->|Cleanup Events| CW
+    CW <-->|Prune Metadata| DB_APP
+    CW <-->|Delete Objects| RFS
 
 ```
 
