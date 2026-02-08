@@ -183,6 +183,20 @@ Each service is a self-contained `uv` project with independent environments and 
 
 ```
 
+### 8. Cleanup Worker (The Scrubber)
+
+```text
+/services/cleanup-worker
+├── pyproject.toml                  # uv project (aiokafka, aiobotocore, sqlmodel)
+├── src/
+│   └── cleanup/
+│       ├── handlers/               # Logic for 'project.deleted' or 'file.expired'
+│       ├── scheduler/              # Cron logic for orphan scrubbing (S3 vs DB)
+│       ├── storage/                # RustFS/S3 deletion client
+│       └── config.py
+└── tests/
+    └── pytest/                     # Integration tests for recursive deletion
+```
 ---
 
 ### Key Component Explanations
@@ -208,5 +222,23 @@ The `image-processor` consumes the batch task and produces three specific output
 2. **Preview:** Downscaled to  (if original is larger).
 3. **Thumbnail:** Small, high-compression variant.
 Each is uploaded to a resolution-specific path in the `processed` bucket.
+
+#### Storage Hygiene & Deletion Flow
+The API Gateway no longer performs heavy I/O deletions. Instead:
+
+Soft Delete: When a user deletes a project, the Gateway marks the record as deleted in PostgreSQL.
+
+Event Trigger: The Gateway emits a PROJECT_PURGE_REQUESTED event to Kafka.
+
+Async Cleanup: The Cleanup Worker picks up the event, identifies all associated blob keys (Raw, Normal, Preview, Thumbnail), and executes a batch delete against RustFS.
+
+Verification: Once storage is cleared, it performs the final hard-delete or archive update in the database.
+
+#### The "Orphan" Scrubber
+Because users might upload files to S3 via presigned URLs but never finish the "Confirm Upload" step in the API, the Cleanup Worker runs a daily task:
+
+It lists objects in the uploads/tmp/ prefix of RustFS.
+
+Any file older than 24 hours without a corresponding "Ready" flag in DB_APP is automatically purged.
 
 **Would you like me to generate the `pyproject.toml` and Pydantic Settings models for the API Gateway and BFF services next?**
