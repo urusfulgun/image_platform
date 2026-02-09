@@ -56,50 +56,11 @@ async def test_expired_or_missing_nonce(
 ):
     """Test the 'Happy Path' where all bindings are valid."""
 
-    # 1. Setup Keys and Bindings
-    proof_key: jwk.ECKey = jwk.generate_key("EC", "P-256")
-    jkt = jwk.thumbprint(proof_key, "sha256")
-
-    # 2. Create Access Token signed by Auth Server (test_keys)
-    at_header = {"alg": "ES256"}
-    at_payload = {
-        "iss": "https://auth.example.com",
-        "sub": "550e8400-e29b-41d4-a716-446655440000",
-        "iat": int(time.time()),
-        "exp": int(time.time()) + 3600,
-        "cnf": {"jkt": jkt},
-    }
-    access_token = jwt.encode(at_header, at_payload, test_keys)
-
-    # 3. Create DPoP Proof
-    ath = (
-        base64.urlsafe_b64encode(hashlib.sha256(access_token.encode()).digest())
-        .decode()
-        .rstrip("=")
+    request, call_next, token = await get_mock_request_valid_nonce(
+        middleware_instance, test_keys, mock_redis
     )
-    nonce = "expired-nonce"
-    # Prime the mock just like a real Redis
-    # Do NOT set anything in mock_redis
-    proof = create_dpop_proof(
-        proof_key, "GET", "https://api.example.com/data", ath=ath, nonce=nonce
-    )
-
-    # # 4. Mock Redis behavior
-    # mock_redis.delete.side_effect = lambda k: 1 if k == f"dpop_nonce:{nonce}" else 0
-    # mock_redis.exists.side_effect = lambda k: (
-    #     k == f"dpop_nonce:{nonce}"
-    # )  # Only nonce exists
-
-    # 5. Simulate Request
-    request = MagicMock(spec=Request)
-    request.headers = {"Authorization": f"DPoP {access_token}", "DPoP": proof}
-    request.method = "GET"
-    request.url = "https://api.example.com/data"
-    request.app.state.redis = mock_redis
-    request.state = MagicMock()  # To allow request.state.user_sub assignment
-
-    async def call_next(req):
-        return "Success"
+    nonce = 'valid-nonce'
+    assert await mock_redis.delete(f"dpop_nonce:{nonce}") == 1
 
     response = await middleware_instance.dispatch(request, call_next)
 
