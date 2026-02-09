@@ -11,11 +11,18 @@ from pydantic import HttpUrl
 from shared_core.middlewares.dpop import DPoPMiddleware
 
 
-def create_dpop_proof(proof_key: jwk.ECKey, method, url: HttpUrl, ath=None, nonce=None):
+def create_dpop_proof(
+    proof_key: jwk.ECKey,
+    method,
+    url: HttpUrl,
+    ath=None,
+    nonce=None,
+    jti="unique-jti-123",
+):
     """Helper to generate a signed DPoP Proof JWT."""
     header = {"typ": "dpop+jwt", "alg": "ES256", "jwk": proof_key.as_dict()}
     payload = {
-        "jti": "unique-jti-123",
+        "jti": jti,
         "htm": method,
         "htu": str(url).split("?")[0],
         "iat": int(time.time()),
@@ -32,7 +39,13 @@ async def get_mock_request_valid_nonce(
     middleware_instance: DPoPMiddleware,
     test_keys: jwk.ECKey,
     mock_redis: MagicMock,
-) -> tuple[MagicMock, Callable[[MagicMock], Literal["Success"]], dict[Literal['header', 'payload'], dict]]:
+    jti: str = "unique-jti-123",
+    nonce: str = "valid-nonce",
+) -> tuple[
+    MagicMock,
+    Callable[[MagicMock], Literal["Success"]],
+    dict[Literal["header", "payload"], dict],
+]:
     # 1. Setup Keys and Bindings
     proof_key: jwk.ECKey = jwk.generate_key("EC", "P-256")
     jkt = jwk.thumbprint(proof_key, "sha256")
@@ -54,11 +67,16 @@ async def get_mock_request_valid_nonce(
         .decode()
         .rstrip("=")
     )
-    nonce = "valid-nonce"
+
     # Prime the mock just like a real Redis
     await mock_redis.set(f"dpop_nonce:{nonce}", "1")
     proof = create_dpop_proof(
-        proof_key, "GET", "https://api.example.com/data", ath=ath, nonce=nonce
+        proof_key,
+        "GET",
+        "https://api.example.com/data",
+        ath=ath,
+        nonce=nonce,
+        jti=jti,
     )
 
     # # 4. Mock Redis behavior (in conftest)
@@ -74,4 +92,4 @@ async def get_mock_request_valid_nonce(
     async def call_next(req):
         return "Success"
 
-    return request, call_next, {'header': at_header, 'payload': at_payload}
+    return request, call_next, {"header": at_header, "payload": at_payload}

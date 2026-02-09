@@ -5,7 +5,7 @@ import time
 import hashlib
 import base64
 from joserfc import jwt, jwk
-from fastapi import Request
+from fastapi import HTTPException, Request
 from shared_core.schemas.exceptions import DPoPError
 from shared_core.middlewares.dpop import DPoPMiddleware
 from utils.helpers import create_dpop_proof, get_mock_request_valid_nonce
@@ -55,11 +55,12 @@ async def test_expired_or_missing_nonce(
     middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
 ):
     """Test the 'Happy Path' where all bindings are valid."""
-
+    nonce = "valid-nonce"
     request, call_next, token = await get_mock_request_valid_nonce(
-        middleware_instance, test_keys, mock_redis
+        middleware_instance,
+        test_keys,
+        mock_redis,
     )
-    nonce = 'valid-nonce'
     assert await mock_redis.delete(f"dpop_nonce:{nonce}") == 1
 
     response = await middleware_instance.dispatch(request, call_next)
@@ -70,34 +71,46 @@ async def test_expired_or_missing_nonce(
     assert await mock_redis.exists(f"dpop_nonce:{new_nonce}") is True
 
 
-# @pytest.mark.asyncio
-# async def test_jti_replay_fails(middleware_instance, mock_redis):
-#     async def call_next(req):
-#         return "Success"
-#     # 1. Setup a valid request
-#     jti = "unique-jti-456"
-#     nonce = "valid-nonce"
-#     await mock_redis.set(f"dpop_nonce:{nonce}", "1")
+@pytest.mark.asyncio
+async def test_jti_replay_fails(
+    middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
+):
+    nonce = "valid-nonce"
+    jti_1 = "unique-jti-123"
+    request, call_next, token = await get_mock_request_valid_nonce(
+        middleware_instance,
+        test_keys,
+        mock_redis,
+        jti=jti_1,
+        nonce=nonce,
+    )
 
-#     proof = create_dpop_proof(..., jti=jti, nonce=nonce)
-#     request = MagicMock(spec=Request)
-#     request.headers = {"Authorization": f"DPoP {valid_token}", "DPoP": proof}
-#     request.app.state.redis = mock_redis
+    # 2. First request should succeed
+    response1 = await middleware_instance.dispatch(request, call_next)
 
-#     # 2. First request should succeed
-#     response1 = await middleware_instance.dispatch(request, call_next)
+    assert response1 == "Success"
 
-#     # 3. Second request with the SAME JTI should fail
-#     # We mock a new nonce because the previous one was deleted
-#     new_nonce = "second-nonce"
-#     await mock_redis.set(f"dpop_nonce:{new_nonce}", "1")
+    # 3. Second request with the SAME JTI should fail
+    # We mock a new nonce because the previous one was deleted
+    new_nonce = "second-nonce"
+    request, call_next, token = await get_mock_request_valid_nonce(
+        middleware_instance,
+        test_keys,
+        mock_redis,
+        jti=jti_1,
+        nonce=nonce,
+    )
+    await mock_redis.set(f"dpop_nonce:{new_nonce}", "1")
 
-#     # Re-sign the proof with the same JTI but the new nonce
-#     replay_proof = create_dpop_proof(..., jti=jti, nonce=new_nonce)
-#     request.headers["DPoP"] = replay_proof
+    # Re-sign the proof with the same JTI but the new nonce
+    # replay_proof = create_dpop_proof(..., jti=jti, nonce=new_nonce)
+    # request.headers["DPoP"] = replay_proof
 
-#     # This should now trigger a DPoPReplayError (401)
-#     response2 = await middleware_instance.dispatch(request, call_next)
-
-#     assert response2.status_code == 401
-#     assert "replay" in response2.body.decode().lower()
+    # This should now trigger a DPoPReplayError (401)
+    # Assert that the middleware raises the specific HTTPException
+    with pytest.raises(HTTPException) as exc_info:
+        await middleware_instance.dispatch(request, call_next)
+    
+    # Verify the details of the exception
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Proof JTI already used"
