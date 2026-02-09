@@ -1,17 +1,14 @@
 from datetime import datetime, timezone
 from uuid import UUID
+import uuid
+from api_gateway.utils.utc import get_utc_now
 from sqlmodel import Field, SQLModel, Relationship, Column, JSON
-
-
-# Recommended helper for timezone-aware UTC
-def get_utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class ShadowUser(SQLModel, table=True):
     __tablename__ = "shadow_users"
 
-    user_id: UUID = Field(primary_key=True)
+    user_id: UUID = Field(default_factory=uuid.uuid7, primary_key=True)
     keycloak_sub: str = Field(unique=True, index=True)
     email: str
     created_at: datetime = Field(default_factory=get_utc_now)
@@ -39,7 +36,7 @@ class ResolutionTypeLookup(SQLModel, table=True):
 class Project(SQLModel, table=True):
     __tablename__ = "projects"
 
-    project_id: UUID = Field(primary_key=True)
+    project_id: UUID = Field(default_factory=uuid.uuid7, primary_key=True)
     owner_id: UUID = Field(foreign_key="shadow_users.user_id", index=True)
     name: str
     naming_template: str | None = None
@@ -61,7 +58,7 @@ class Project(SQLModel, table=True):
 class ProjectAccessControl(SQLModel, table=True):
     __tablename__ = "project_access_control"
 
-    access_id: UUID = Field(primary_key=True)
+    access_id: UUID = Field(default_factory=uuid.uuid7, primary_key=True)
     project_id: UUID = Field(foreign_key="projects.project_id", index=True)
     grantee_user_id: UUID = Field(foreign_key="shadow_users.user_id", index=True)
     access_level: str = Field(default="READ_ONLY")
@@ -74,7 +71,7 @@ class ProjectAccessControl(SQLModel, table=True):
 class Batch(SQLModel, table=True):
     __tablename__ = "batches"
 
-    batch_id: UUID = Field(primary_key=True)
+    batch_id: UUID = Field(default_factory=uuid.uuid7, primary_key=True)
     project_id: UUID = Field(foreign_key="projects.project_id", index=True)
     status: str = Field(default="PENDING", foreign_key="batch_statuses.status_id")
     created_at: datetime = Field(default_factory=get_utc_now)
@@ -86,7 +83,7 @@ class Batch(SQLModel, table=True):
 class ImageMetadata(SQLModel, table=True):
     __tablename__ = "image_metadata"
 
-    image_id: UUID = Field(primary_key=True)  # S3 Physical Filename
+    image_id: UUID = Field(default_factory=uuid.uuid7, primary_key=True)  # S3 Physical Filename
     batch_id: UUID = Field(foreign_key="batches.batch_id", index=True)
     owner_id: UUID = Field(foreign_key="shadow_users.user_id")
 
@@ -97,6 +94,7 @@ class ImageMetadata(SQLModel, table=True):
     error_message: str | None = None
     created_at: datetime = Field(default_factory=get_utc_now)
     updated_at: datetime = Field(default_factory=get_utc_now)
+    storage_key: str
 
     batch: Batch = Relationship(back_populates="images")
     variants: list["ImageVariant"] = Relationship(back_populates="parent_image")
@@ -105,7 +103,7 @@ class ImageMetadata(SQLModel, table=True):
 class ImageVariant(SQLModel, table=True):
     __tablename__ = "image_variants"
 
-    variant_id: UUID = Field(primary_key=True)
+    variant_id: UUID = Field(default_factory=uuid.uuid7, primary_key=True)
     parent_image_id: UUID = Field(foreign_key="image_metadata.image_id", index=True)
     res_type: str = Field(foreign_key="resolution_types.res_id")
     s3_path: str

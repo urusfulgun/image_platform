@@ -1,9 +1,10 @@
-from fastapi import Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from bff.service_layer.bff_proxy import BFFProxyService
 
+router = APIRouter(prefix="/proxy", tags=["Proxy"])
 
-@app.api_route("/api/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+@router.api_route("/api/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
 async def bff_proxy_handler(
     path: str, request: Request, proxy: BFFProxyService = Depends(get_proxy_service)
 ):

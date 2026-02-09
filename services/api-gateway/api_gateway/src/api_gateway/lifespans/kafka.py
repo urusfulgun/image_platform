@@ -7,6 +7,7 @@ from api_gateway.utils.kafka_producer import create_producer
 from api_gateway.config import settings
 from fastapi import FastAPI
 from api_gateway.db import async_session_factory
+from api_gateway.service_layer.kafka_producer import KafkaProducerWrapper
 
 
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +17,7 @@ logger = logging.getLogger("gateway-kafka")
 # --- Kafka producer Lifespan ---
 @asynccontextmanager
 async def kafka_producer_lifespan(app: FastAPI):
-    producer = create_producer(settings)
+    producer = KafkaProducerWrapper(producer=None, factory=create_producer)
     await producer.start()
     print("Kafka Producer started")
     app.state.kafka_producer = producer

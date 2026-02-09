@@ -1,3 +1,4 @@
+from typing import Any
 import httpx
 import uuid
 import time
@@ -30,41 +31,76 @@ class BFFProxyService:
 
         return jwt.encode(header, payload, self.dpop_private_key)
 
-    async def forward_to_gateway(self, request: Request, path: str):
+    async def _refresh_access_token(self, session_data: dict) -> str:
         """
-        Converts a Cookie-based browser request into a DPoP-bound Gateway request.
+        Swaps the Refresh Token for a new DPoP-bound Access Token.
         """
-        # 1. Retrieve the Access Token from the secure Server-Side Session
-        # In a real app, 'request.state.session' would be populated from Redis via middleware
-        access_token = request.state.session.get("access_token")
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Session expired")
+        refresh_token = session_data.get("refresh_token")
+        token_url = f"{self.settings.keycloak_url}/realms/{self.settings.realm}/protocol/openid-connect/token"
 
-        # 2. Prepare the target URL
-        full_target_url = f"{self.gateway_url}/{path}"
-        method = request.method
+        # 1. DPoP Proof for the Token Endpoint
+        dpop_proof = self._create_request_dpop_proof(token_url, "POST")
 
-        # 3. Generate the DPoP Proof SPECIFIC to this request
-        dpop_proof = self._create_request_dpop_proof(full_target_url, method)
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": self.settings.client_id,
+            "client_secret": self.settings.client_secret,
+        }
 
-        # 4. Proxy the request to the API Gateway
+        headers = {"DPoP": dpop_proof}
+
         async with httpx.AsyncClient() as client:
-            headers = {
-                "Authorization": f"DPoP {access_token}",
-                "DPoP": dpop_proof,
-                "Content-Type": "application/json",
-            }
+            response = await client.post(token_url, data=data, headers=headers)
 
-            # Read the incoming body if it exists
-            body = await request.body()
+            if response.status_code != 200:
+                # Refresh token is likely expired or revoked; force re-login
+                raise HTTPException(
+                    status_code=401, detail="Session expired, please log in again."
+                )
 
-            response = await client.request(
-                method=method,
-                url=full_target_url,
-                headers=headers,
-                content=body,
-                params=request.query_params,
+            new_tokens = response.json()
+
+            # 2. Update the Server-Side Session (Redis)
+            # This logic depends on your session management implementation
+            await self.session_manager.update_session(
+                session_data["session_id"],
+                {
+                    "access_token": new_tokens["access_token"],
+                    "refresh_token": new_tokens.get("refresh_token", refresh_token),
+                },
             )
 
-            # 5. Return the Gateway's response back to the Frontend
-            return response.json(), response.status_code
+            return new_tokens["access_token"]
+
+    async def forward_to_gateway(self, request: Request, path: str):
+        access_token = request.state.session.get("access_token")
+        full_target_url = f"{self.gateway_url}/{path}"
+
+        # Attempt the request
+        response = await self._send_to_gateway(
+            access_token, full_target_url, request.method, await request.body()
+        )
+
+        # 3. Automatic Retry Logic on 401
+        if response.status_code == 401:
+            # Try to refresh
+            new_access_token = await self._refresh_access_token(request.state.session)
+
+            # Retry the original request with the NEW token
+            response = await self._send_to_gateway(
+                new_access_token, full_target_url, request.method, await request.body()
+            )
+
+        return response.json(), response.status_code
+
+    async def _send_to_gateway(self, token: str, url: str, method: str, body: bytes):
+        """Helper to sign and send request to Gateway"""
+        dpop_proof = self._create_request_dpop_proof(url, method)
+        async with httpx.AsyncClient() as client:
+            return await client.request(
+                method=method,
+                url=url,
+                headers={"Authorization": f"DPoP {token}", "DPoP": dpop_proof},
+                content=body,
+            )

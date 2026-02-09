@@ -26,6 +26,10 @@ def create_producer(
         request_timeout_ms=10000,
         retry_backoff_ms=500,
         # max_batch_size=16384,
+        # Optimization: idempotent producers prevent duplicates
+        enable_idempotence=True,
+        # Wait for all replicas to acknowledge for high security
+        acks="all",
     )
     return producer
 

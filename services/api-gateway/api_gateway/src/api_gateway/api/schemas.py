@@ -1,6 +1,9 @@
+from datetime import datetime
 import re
+from api_gateway.utils.utc import get_utc_now
 from pydantic import (
     BaseModel,
+    HttpUrl,
     ValidationInfo,
     field_validator,
     model_validator,
@@ -9,7 +12,7 @@ from pydantic import (
 )
 
 import uuid
-from typing import Annotated, Optional, Self
+from typing import Annotated, Literal, Optional, Self
 
 # Define the set of valid resolutions allowed by the system
 VALID_RESOLUTIONS = {"NORMAL", "PREVIEW", "THUMBNAIL"}
@@ -174,3 +177,24 @@ class AccessGrant(BaseModel):
             raise ValueError("You cannot share a project with yourself.")
 
         return self
+
+
+class ImageUploadIntentResponse(BaseModel):
+    """
+    Schema returned to the Angular frontend to facilitate
+    direct-to-S3 (RustFS) uploads.
+    """
+
+    image_id: uuid.UUID = Field(
+        ..., description="The UUID7 identifier generated for the image metadata."
+    )
+    upload_url: HttpUrl = Field(
+        ..., description="The presigned S3 URL valid for a PUT request."
+    )
+    method: Literal["PUT"] = Field(
+        default="PUT", description="The HTTP method required for the upload_url."
+    )
+
+    class Config:
+        # Ensures that UUIDs and HttpUrls are serialized to strings in the JSON output
+        from_attributes = True

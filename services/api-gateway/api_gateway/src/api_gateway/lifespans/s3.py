@@ -1,8 +1,11 @@
+import asyncio
 from contextlib import asynccontextmanager
 import aioboto3
+from aiokafka import AIOKafkaConsumer
 from api_gateway.config import RUSTFS_PARAMS, LIFECYCLE_CONFIG, settings
 from fastapi import FastAPI
 from types_aiobotocore_s3 import S3Client
+from asyncio import Task
 
 
 @asynccontextmanager

@@ -39,6 +39,7 @@ class GatewaySettings(BaseSettings):
     KEYCLOAK_PUBLIC_KEY: SecretStr
     # Audience validation for tokens
     EXPECTED_AUDIENCE: str = "account"
+    ACCESS_TOKEN_LEEWAY: int = 30 # seconds
 
 
 settings = GatewaySettings()

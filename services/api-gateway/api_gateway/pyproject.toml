@@ -19,6 +19,11 @@ dependencies = [
     "joserfc>=1.6.1",
     "cryptography>=46.0.4",
     "types-aiobotocore-s3>=3.1.1",
+    "boto3-stubs[essential]>=1.42.44",
+    "httpx>=0.28.1",
+    "redis>=7.1.0",
+    "fakeredis>=2.33.0",
+    "pytest-asyncio>=1.3.0",
 ]
 
 [dependency-groups]
@@ -27,6 +32,10 @@ dev = [
     "pytest-asyncio>=1.3.0",
     "testcontainers[postgresql,kafka]>=4.14.1",
 ]
+
+[pytest]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [project.scripts]
 api-gateway = "api_gateway:main"

@@ -1,6 +1,7 @@
 from typing import AsyncGenerator
 from api_gateway.utils.db_url import get_url
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlmodel import SQLModel
 
 
 DATABASE_URL = get_url()
@@ -14,3 +15,7 @@ async_session_factory = async_sessionmaker(
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
         yield session
+
+
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)

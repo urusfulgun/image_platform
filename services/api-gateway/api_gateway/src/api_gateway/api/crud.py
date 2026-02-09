@@ -1,12 +1,16 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from api_gateway.service_layer.storage_service import StorageService
+from api_gateway.utils.utc import get_utc_now
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import ValidationError
 from sqlmodel import or_, select, and_, exists
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy.engine.result import Result, ScalarResult, TupleResult
+from sqlalchemy.engine.result import TupleResult
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
+from api_gateway.service_layer.kafka_producer import (
+    KafkaProducerWrapper,
+)  # Your AIOKafkaProducer instance
 
 # Internal modules
 from api_gateway.db import get_db_session
@@ -16,22 +20,23 @@ from api_gateway.domain.models import (
     ImageMetadata,
     ProjectAccessControl,
     ShadowUser,
-    get_utc_now,
 )
 from api_gateway.api.schemas import (
+    ImageUploadIntentResponse,
     ProjectCreate,
     ProjectUpdate,
     ImageRename,
     AccessGrant,
 )
 
-router = APIRouter(prefix="/projects", tags=["Project Aggregate"])
+from shared_core.events.imagelifecycle import ImageLifecycleEvent
+
+router = APIRouter(prefix="/projects", tags=["Project Manipulation"])
 
 
 # Helper for current user (Extracted from DPoP Token by middleware)
 async def get_current_user_id(
-    request: Request,
-    session: AsyncSession = Depends(get_db_session)
+    request: Request, session: AsyncSession = Depends(get_db_session)
 ) -> uuid.UUID:
     """
     Extracts the 'sub' (Keycloak ID) from the request state (set by Auth Middleware)
@@ -40,11 +45,11 @@ async def get_current_user_id(
     # 1. Retrieve the 'sub' claim attached to the request by the Auth Middleware
     # The middleware should have already verified the JWT and DPoP signature.
     external_sub = getattr(request.state, "user_sub", None)
-    
+
     if not external_sub:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User identity could not be verified from token."
+            detail="User identity could not be verified from token.",
         )
 
     # 2. Look up the internal user_id in the shadow_users table
@@ -57,7 +62,7 @@ async def get_current_user_id(
         # This happens if the Kafka sync from Keycloak hasn't finished yet
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User profile synchronization in progress. Please retry."
+            detail="User profile synchronization in progress. Please retry.",
         )
 
     return internal_user_id
@@ -333,6 +338,7 @@ async def grant_read_access(
     "/{project_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def delete_image(
+    request: Request,
     project_id: uuid.UUID,
     image_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -354,7 +360,7 @@ async def delete_image(
     )
 
     result: TupleResult = await session.exec(stmt)
-    image = result.scalar_one_or_none()
+    image: ImageMetadata = result.scalar_one_or_none()
 
     if image is None:
         raise HTTPException(
@@ -362,9 +368,87 @@ async def delete_image(
             detail="Image not found in this project context",
         )
 
+    # 2. Capture data for the event
+    event = ImageLifecycleEvent(
+        image_id=image.image_id,
+        batch_id=image.batch_id,
+        project_id=project_id,
+        owner_id=image.owner_id,
+        status="DELETED",
+        storage_key=image.storage_key,
+    )
+
     # 2. Perform the deletion
     await session.delete(image)
     await session.commit()
 
+    kafka_producer: KafkaProducerWrapper = request.app.state.kafka_producer
+
     # Optional: Send 'ImageDeleted' event to Kafka for S3 cleanup
-    # await producer.send("image-lifecycle", {"action": "DELETE", "id": str(image_id)})
+    await kafka_producer.send_and_wait(
+        "image-lifecycle", event.model_dump_json().encode()
+    )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{project_id}/batches/{batch_id}/upload-intent",
+    response_model=ImageUploadIntentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def initialize_upload(
+    request: Request,
+    project_id: uuid.UUID,
+    batch_id: uuid.UUID,
+    filename: str,
+    session: AsyncSession = Depends(get_db_session),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    storage: StorageService = Depends(StorageService),  # Inject service
+):
+    kafka_producer: KafkaProducerWrapper = request.app.state.kafka_producer
+    # 1. Validation: Ensure batch belongs to project and user
+    stmt = (
+        select(Batch)
+        .where(Batch.batch_id == batch_id, Batch.project_id == project_id)
+        .join(Project)
+        .where(Project.owner_id == user_id)
+    )
+
+    result: TupleResult = await session.exec(stmt)
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Batch context not found.")
+
+    # 2. Create Image Metadata (UUID7 for physical/logical link)
+    image_id = uuid.uuid7()
+    new_image = ImageMetadata(
+        image_id=image_id,
+        batch_id=batch_id,
+        owner_id=user_id,
+        display_name=filename,
+        status="PENDING_UPLOAD",
+        created_at=get_utc_now(),
+    )
+
+    # 3. Get Presigned URL from RustFS
+    presigned_url, s3_key = await storage.generate_upload_url(image_id)
+    new_image.storage_key = s3_key
+
+    session.add(new_image)
+    await session.commit()
+
+    event = ImageLifecycleEvent(
+        image_id=image_id,
+        status="INITIALIZED",
+        storage_key=s3_key,
+    )
+
+    await kafka_producer.send_and_wait(
+        "image.lifecycle", event.model_dump_json().encode()
+    )
+    
+    return ImageUploadIntentResponse(
+        image_id=image_id,
+        upload_url=presigned_url,
+        method="PUT",
+    )
