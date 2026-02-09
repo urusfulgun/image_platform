@@ -1,12 +1,10 @@
 import secrets
-import uuid
-import time
 import base64
 import hashlib
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional
 
 from fastapi import Request, HTTPException, status
-from pydantic import HttpUrl, ValidationError
+from pydantic import ValidationError
 from shared_core.schemas import exceptions
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -235,9 +233,7 @@ class DPoPMiddleware(BaseHTTPMiddleware):
         digest = hashlib.sha256(token.encode("ascii")).digest()
         return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
-    async def check_nonce(
-        self, redis_cache: redis.Redis, nonce: Optional[str]
-    ) -> bool:
+    async def check_nonce(self, redis_cache: redis.Redis, nonce: Optional[str]) -> bool:
         """
         Checks if the provided nonce exists in the server-side cache.
 
@@ -255,13 +251,15 @@ class DPoPMiddleware(BaseHTTPMiddleware):
         # redis.delete returns the number of keys removed (int)
         # In a real environment, this is 1 (success) or 0 (not found/already used)
         deleted_count = await redis_cache.delete(key)
-        
+
         return isinstance(deleted_count, int) and deleted_count > 0
 
     async def is_not_replay(self, redis_cache: redis.Redis, jti: str) -> bool:
         """
         Checks the JTI against the replay cache to prevent replay attacks.
-
+        Implements JTI Replay Protection.
+        Returns True if the JTI is new and has been recorded.
+        Returns False if the JTI has been seen before.
         Args:
             redis_cache: The Redis client instance.
             jti: The unique identifier for the DPoP proof.
@@ -270,9 +268,14 @@ class DPoPMiddleware(BaseHTTPMiddleware):
             bool: True if the JTI has not been seen before, False if it's a replay.
         """
         key = f"dpop_jti:{jti}"
-        if await redis_cache.exists(key):
+
+        # We try to set the JTI. If it already exists, 'nx=True' causes
+        # Redis to return None/False.
+        # TTL should be at least as long as the Proof's 'iat' window (e.g., 300s).
+        success = await redis_cache.set(key, "1", ex=self.NONCE_TTL, nx=True)
+
+        if not success:
             return False
-        await redis_cache.set(key, "1", ex=300)
         return True
 
     async def handle_nonce_challenge(

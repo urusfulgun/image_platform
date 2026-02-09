@@ -8,23 +8,7 @@ from joserfc import jwt, jwk
 from fastapi import Request
 from shared_core.schemas.exceptions import DPoPError
 from shared_core.middlewares.dpop import DPoPMiddleware
-
-
-def create_dpop_proof(proof_key: jwk.ECKey, method, url: HttpUrl, ath=None, nonce=None):
-    """Helper to generate a signed DPoP Proof JWT."""
-    header = {"typ": "dpop+jwt", "alg": "ES256", "jwk": proof_key.as_dict()}
-    payload = {
-        "jti": "unique-jti-123",
-        "htm": method,
-        "htu": str(url).split("?")[0],
-        "iat": int(time.time()),
-    }
-    if ath:
-        payload["ath"] = ath
-    if nonce:
-        payload["nonce"] = nonce
-
-    return jwt.encode(header, payload, proof_key)
+from utils.helpers import create_dpop_proof, get_mock_request_valid_nonce
 
 
 @pytest.mark.asyncio
@@ -54,59 +38,22 @@ async def test_full_dpop_success(
 ):
     """Test the 'Happy Path' where all bindings are valid."""
 
-    # 1. Setup Keys and Bindings
-    proof_key: jwk.ECKey = jwk.generate_key("EC", "P-256")
-    jkt = jwk.thumbprint(proof_key, "sha256")
-
-    # 2. Create Access Token signed by Auth Server (test_keys)
-    at_header = {"alg": "ES256"}
-    at_payload = {
-        "iss": "https://auth.example.com",
-        "sub": "550e8400-e29b-41d4-a716-446655440000",
-        "iat": int(time.time()),
-        "exp": int(time.time()) + 3600,
-        "cnf": {"jkt": jkt},
-    }
-    access_token = jwt.encode(at_header, at_payload, test_keys)
-
-    # 3. Create DPoP Proof
-    ath = (
-        base64.urlsafe_b64encode(hashlib.sha256(access_token.encode()).digest())
-        .decode()
-        .rstrip("=")
+    request, call_next, token = await get_mock_request_valid_nonce(
+        middleware_instance, test_keys, mock_redis
     )
-    nonce = "valid-nonce"
-    # Prime the mock just like a real Redis
-    await mock_redis.set(f"dpop_nonce:{nonce}", "1")
-    proof = create_dpop_proof(
-        proof_key, "GET", "https://api.example.com/data", ath=ath, nonce=nonce
-    )
-
-    # # 4. Mock Redis behavior
-    # mock_redis.delete.side_effect = lambda k: 1 if k == f"dpop_nonce:{nonce}" else 0
-    # mock_redis.exists.side_effect = lambda k: (
-    #     k == f"dpop_nonce:{nonce}"
-    # )  # Only nonce exists
-
-    # 5. Simulate Request
-    request = MagicMock(spec=Request)
-    request.headers = {"Authorization": f"DPoP {access_token}", "DPoP": proof}
-    request.method = "GET"
-    request.url = "https://api.example.com/data"
-    request.app.state.redis = mock_redis
-    request.state = MagicMock()  # To allow request.state.user_sub assignment
-
-    async def call_next(req):
-        return "Success"
 
     result = await middleware_instance.dispatch(request, call_next)
 
     assert result == "Success"
     # Ensure user_sub was correctly extracted
+    at_payload = token["payload"]
     assert str(request.state.user_sub) == at_payload["sub"]
 
+
 @pytest.mark.asyncio
-async def test_expired_or_missing_nonce(middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis):
+async def test_expired_or_missing_nonce(
+    middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
+):
     """Test the 'Happy Path' where all bindings are valid."""
 
     # 1. Setup Keys and Bindings
@@ -153,10 +100,43 @@ async def test_expired_or_missing_nonce(middleware_instance: DPoPMiddleware, tes
 
     async def call_next(req):
         return "Success"
-    
+
     response = await middleware_instance.dispatch(request, call_next)
-    
+
     assert response.status_code == 401
     # Check that a NEW nonce was generated and saved to Redis
     new_nonce = response.headers["DPoP-Nonce"]
     assert await mock_redis.exists(f"dpop_nonce:{new_nonce}") is True
+
+
+# @pytest.mark.asyncio
+# async def test_jti_replay_fails(middleware_instance, mock_redis):
+#     async def call_next(req):
+#         return "Success"
+#     # 1. Setup a valid request
+#     jti = "unique-jti-456"
+#     nonce = "valid-nonce"
+#     await mock_redis.set(f"dpop_nonce:{nonce}", "1")
+
+#     proof = create_dpop_proof(..., jti=jti, nonce=nonce)
+#     request = MagicMock(spec=Request)
+#     request.headers = {"Authorization": f"DPoP {valid_token}", "DPoP": proof}
+#     request.app.state.redis = mock_redis
+
+#     # 2. First request should succeed
+#     response1 = await middleware_instance.dispatch(request, call_next)
+
+#     # 3. Second request with the SAME JTI should fail
+#     # We mock a new nonce because the previous one was deleted
+#     new_nonce = "second-nonce"
+#     await mock_redis.set(f"dpop_nonce:{new_nonce}", "1")
+
+#     # Re-sign the proof with the same JTI but the new nonce
+#     replay_proof = create_dpop_proof(..., jti=jti, nonce=new_nonce)
+#     request.headers["DPoP"] = replay_proof
+
+#     # This should now trigger a DPoPReplayError (401)
+#     response2 = await middleware_instance.dispatch(request, call_next)
+
+#     assert response2.status_code == 401
+#     assert "replay" in response2.body.decode().lower()

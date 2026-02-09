@@ -24,7 +24,10 @@ def mock_redis():
 
     mock = AsyncMock()
 
-    async def side_effect_set(key, value, ex=None, **kwargs):
+    async def side_effect_set(key, value, ex=None, nx=False, **kwargs):
+        # nx=True simulates 'Set if Not Exists'
+        if nx and key in storage:
+            return None  # Redis returns None/Null if NX fails
         storage[key] = value
         return True
 
