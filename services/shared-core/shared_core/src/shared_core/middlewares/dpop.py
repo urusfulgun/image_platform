@@ -116,10 +116,20 @@ class DPoPMiddleware(BaseHTTPMiddleware):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token signature or format",
             )
-        except ValidationError as e:
-            # We return a 400 because this is a client formatting error
+        except (exceptions.DPoPBindingError, 
+            exceptions.DPoPReplayError, 
+            exceptions.DPoPKeyMismatchError) as e:
+            # These are all 401 Unauthorized issues
+            # We ensure the 'detail' from the custom exception is passed through
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=e.errors()
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=getattr(e, "detail", str(e))
+            )
+        except exceptions.DPoPError as e:
+            # Generic catch-all for other DPoP issues
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=getattr(e, "detail", "DPoP validation failed")
             )
         except (exceptions.DPoPBindingError, exceptions.DPoPReplayError) as e:
             # All binding (htu, htm, iss, ath) and replay issues go here

@@ -1,45 +1,81 @@
-from typing import Any
+from typing import Any, Literal
 import httpx
 import uuid
 import time
 from fastapi import Request, HTTPException, Depends
 from joserfc import jwt, jwk
+from pydantic import HttpUrl
+from shared_core.schemas.dpop import DPoPHeader, DPoPProofPayload
+from shared_core.shared_types.http_request import MethodType
+from bff.config import BFFSettings
+from shared_core.schemas import jwk as jwk_schema
 
 
 class BFFProxyService:
-    def __init__(self, settings: Any):
-        self.settings = settings
-        self.gateway_url = settings.api_gateway_url
-        self.dpop_private_key = jwk.import_key(settings.dpop_private_key_pem)
+    settings: BFFSettings
+    gateway_url: HttpUrl
+    token_url: HttpUrl
 
-    def _create_request_dpop_proof(self, target_url: str, method: str) -> str:
+    def __init__(self, settings: BFFSettings):
+        self.settings = settings
+        self.gateway_url = HttpUrl(settings.API_GATEWAY_URL)
+        self.token_url = HttpUrl(self.settings.token_url)
+        self.dpop_private_key = jwk.import_key(settings.DPOP_PRIVATE_KEY_PEM)
+
+    def _produce_dpop_header(
+        self, typ: Literal["dpop+jwt"], alg: Literal["ES256"]
+    ) -> DPoPHeader:
+        return DPoPHeader(
+            typ=typ,
+            alg=alg,
+            jwk=jwk_schema.ECJWK.model_validate(
+                **self.dpop_private_key.as_dict(is_private=False)
+            ),
+        )
+
+    def _produce_payload(
+        self,
+        jti: int,
+        htm: MethodType,
+        htu: HttpUrl,
+        iat: int,
+    ) -> DPoPProofPayload:
+        return DPoPProofPayload(
+            jti=jti,
+            htm=htm,
+            htu=htu,
+            iat=iat,
+        )
+
+    def _create_request_dpop_proof(
+        self, target_url: HttpUrl, method: MethodType
+    ) -> str:
         """
         Creates a fresh DPoP proof for the specific API Gateway call.
         """
-        header = {
-            "typ": "dpop+jwt",
-            "alg": "ES256",
-            "jwk": self.dpop_private_key.as_dict(is_private=False),
-        }
-
-        payload = {
-            "jti": str(uuid.uuid4()),
-            "htm": method,
-            "htu": target_url,
-            "iat": int(time.time()),
-        }
-
-        return jwt.encode(header, payload, self.dpop_private_key)
+        header = self._produce_dpop_header(typ="dpop+jwt", alg="ES256")
+        created_at = int(time.time())
+        jti = str(uuid.uuid7())
+        claims = self._produce_payload(
+            jti=jti,
+            htm=method,
+            htu=target_url,
+            iat=created_at,
+        )
+        return jwt.encode(
+            header.model_dump(),
+            claims.model_dump(),
+            self.dpop_private_key,
+        )
 
     async def _refresh_access_token(self, session_data: dict) -> str:
         """
         Swaps the Refresh Token for a new DPoP-bound Access Token.
         """
         refresh_token = session_data.get("refresh_token")
-        token_url = f"{self.settings.keycloak_url}/realms/{self.settings.realm}/protocol/openid-connect/token"
 
         # 1. DPoP Proof for the Token Endpoint
-        dpop_proof = self._create_request_dpop_proof(token_url, "POST")
+        dpop_proof = self._create_request_dpop_proof(self.token_url, "POST")
 
         data = {
             "grant_type": "refresh_token",
@@ -51,7 +87,7 @@ class BFFProxyService:
         headers = {"DPoP": dpop_proof}
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(token_url, data=data, headers=headers)
+            response = await client.post(self.token_url, data=data, headers=headers)
 
             if response.status_code != 200:
                 # Refresh token is likely expired or revoked; force re-login

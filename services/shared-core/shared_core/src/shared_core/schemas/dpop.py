@@ -4,12 +4,15 @@ from typing import Dict, Any, Literal, Self
 import time
 
 from shared_core.schemas import exceptions
+from shared_core.shared_types.http_request import MethodType
+from shared_core.schemas import jwk as jwk_schema
 
 
 class TemporalClaimsMixin(BaseModel):
     """Shared logic for anything with iat/exp/nbf."""
+
     iat: int = Field(..., description="Issued at timestamp")
-    
+
     @field_validator("iat")
     @classmethod
     def validate_freshness(cls, v: int) -> int:
@@ -22,14 +25,14 @@ class TemporalClaimsMixin(BaseModel):
 
 class DPoPHeader(BaseModel):
     typ: Literal["dpop+jwt"]
-    alg: str
-    jwk: Dict[str, Any]  # The public key
+    alg: Literal["ES256"]
+    jwk: jwk_schema.ECJWK  # The public key
 
 
 class DPoPProofPayload(TemporalClaimsMixin):
     iss: str | None = Field(None, description="(RFC 9449) The client id")
     jti: str = Field(..., description="Unique identifier for replay protection")
-    htm: Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+    htm: MethodType
     htu: HttpUrl = Field(..., description="The HTTP URI without query or fragment")
     nonce: str | None = Field(None, description="Server-provided freshness token")
     ath: str | None = Field(None, description="Required when calling Resource Servers")
@@ -56,7 +59,7 @@ class DPoPProof(BaseModel):
         if not self.header.jwk:
             raise ValueError("DPoP header must contain the public key (jwk)")
         return self
-    
+
     @model_validator(mode="after")
     def validate_proof_integrity(self) -> Self:
         if not self.header.jwk:
@@ -88,7 +91,7 @@ class DPoPAccessTokenPayload(TemporalClaimsMixin):
             raise exceptions.DPoPBindingError(
                 f"Token issued by {self.iss}, bbut this RS only trusts {expected_as_url}"
             )
-        
+
     @field_validator("iss", mode="before")
     @classmethod
     def validate_issuer(cls, v: HttpUrl | None) -> str | None:
@@ -121,8 +124,7 @@ class DPoPAccessTokenPayload(TemporalClaimsMixin):
         # 1. Validate Expiration (Current time must be before exp + leeway)
         if now > (self.exp + leeway_seconds):
             raise exceptions.DPoPError(
-                detail="Access Token has expired",
-                error_code="invalid_token"
+                detail="Access Token has expired", error_code="invalid_token"
             )
 
         # 2. Validate Not Before (Current time must be after nbf - leeway)
@@ -130,18 +132,86 @@ class DPoPAccessTokenPayload(TemporalClaimsMixin):
             if now < (self.nbf - leeway_seconds):
                 raise exceptions.DPoPError(
                     detail="Access Token is not yet valid (nbf check failed)",
-                    error_code="token_not_yet_valid"
+                    error_code="token_not_yet_valid",
                 )
-        
+
         # 3. Sanity Check: Ensure nbf isn't after exp
         if self.nbf and self.nbf > self.exp:
             raise exceptions.DPoPError(
                 detail="Malformed token: nbf cannot be after exp",
-                error_code="invalid_token"
+                error_code="invalid_token",
             )
 
     def verify_binding(self, incoming_jwk_thumbprint: str):
         """Matches the Proof's key to the Token's binding."""
         if self.cnf.jkt != incoming_jwk_thumbprint:
-            raise exceptions.DPoPKeyMismatchError("Token is not bound to the provided private key")
+            raise exceptions.DPoPKeyMismatchError(
+                "Token is not bound to the provided private key"
+            )
         return True
+
+
+class AuthorizeRequest(BaseModel):
+    # The client ID is usually an alphanumeric string from Auth provider
+    client_id: str = Field(..., description="The unique ID of the Auth application")
+
+    # In this flow, response_type must be 'code'
+    response_type: Literal["code"] = Field(
+        ..., description="The type of authorization grant"
+    )
+
+    # Scope can be a single string or space-separated values
+    scope: str = Field(
+        ..., description="Requested permissions (e.g., 'openid profile')"
+    )
+
+    # Must be a valid HTTPS URL
+    redirect_uri: HttpUrl = Field(
+        ..., description="The callback URL registered in Okta"
+    )
+
+    # State is used for security (CSRF protection)
+    state: str = Field(
+        ...,
+        description="An opaque value used to maintain state between request and callback",
+    )
+
+    @field_validator("scope")
+    @classmethod
+    def validate_openid_scope(cls, v: str):
+        if "openid" not in v.split():
+            raise ValueError("The 'openid' scope is required for OIDC requests.")
+        return v
+
+    @model_validator(mode="after")
+    def validate_offline_access(self) -> Self:
+        scopes = self.scope.split()
+
+        # 2. logical check: offline_access requires 'code' in response_type
+        if "offline_access" in scopes:
+            if "code" not in self.response_type:
+                # Per specification, it can be ignored, but in a strict validator
+                # we often raise an error to alert the developer.
+                raise ValueError(
+                    "scope 'offline_access' can only be requested if "
+                    "response_type contains 'code'."
+                )
+        return self
+
+
+class RefreshAccessTokenRequestData(BaseModel):
+    grant_type: Literal["refresh_token"]
+    refresh_token: str
+
+
+def validate_granted_permissions(
+    granted_scope_str: str, required_scopes: set[str]
+) -> bool:
+    granted_scopes: set[str] = set(granted_scope_str.split())
+    missing = required_scopes - granted_scopes
+
+    if missing:
+        # Logic: If the user didn't give us profile access, we can't show their name.
+        raise PermissionError(f"User did not grant required scopes: {missing}")
+
+    return True

@@ -9,6 +9,12 @@ import hashlib
 
 from pydantic import HttpUrl
 from shared_core.middlewares.dpop import DPoPMiddleware
+from shared_core.shared_types.http_request import MethodType
+
+
+def get_ath(token: str) -> str:
+    digest = hashlib.sha256(token.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
 
 def create_dpop_proof(
@@ -35,12 +41,47 @@ def create_dpop_proof(
     return jwt.encode(header, payload, proof_key)
 
 
+class MadeUpRequest:
+    jti: str = "unique-jti-123",
+    nonce: str = "valid-nonce",
+    htu: HttpUrl = "https://api.example.com/data",
+    request_url: HttpUrl = "https://api.example.com/data",
+    request_method: MethodType = "GET",
+    method_in_proof: MethodType = "GET",
+    def __init__(
+        self,
+        jti: str = "unique-jti-123",
+        nonce: str = "valid-nonce",
+        htu: HttpUrl = "https://api.example.com/data",
+        request_url: HttpUrl = "https://api.example.com/data",
+        request_method: MethodType = "GET",
+        method_in_proof: MethodType = "GET",
+    ):
+        self.jti = jti
+        self.nonce = nonce
+        self.htu = htu,
+        request_url = request_url
+        request_method = request_method
+        method_in_proof = method_in_proof
+
+    def make_proof_key(self) -> None:
+        self.proof_key = jwk.generate_key("EC", "P-256")
+
+    def buid(self):
+        raise NotImplementedError
+
+
+
 async def get_mock_request_valid_nonce(
     middleware_instance: DPoPMiddleware,
     test_keys: jwk.ECKey,
     mock_redis: MagicMock,
     jti: str = "unique-jti-123",
     nonce: str = "valid-nonce",
+    htu: HttpUrl = "https://api.example.com/data",
+    request_url: HttpUrl = "https://api.example.com/data",
+    request_method: MethodType = "GET",
+    method_in_proof: MethodType = "GET",
 ) -> tuple[
     MagicMock,
     Callable[[MagicMock], Literal["Success"]],
@@ -73,7 +114,7 @@ async def get_mock_request_valid_nonce(
     proof = create_dpop_proof(
         proof_key,
         "GET",
-        "https://api.example.com/data",
+        htu,
         ath=ath,
         nonce=nonce,
         jti=jti,

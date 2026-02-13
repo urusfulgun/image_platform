@@ -29,6 +29,10 @@ class BFFSettings(BaseSettings):
     @property
     def oidc_well_known_url(self) -> str:
         return f"{self.KEYCLOAK_BASE_URL}/realms/{self.OIDC_REALM}/.well-known/openid-configuration"
+    
+    @property
+    def token_url(self) -> str:
+        return f"{self.KEYCLOAK_BASE_URL}/realms/{self.OIDC_REALM}/protocol/openid-connect/token"
 
 
 settings = BFFSettings()
