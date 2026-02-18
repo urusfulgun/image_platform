@@ -1,4 +1,6 @@
 # resource_server.py
+import base64
+import hashlib
 import boto3
 import jwt
 from fastapi import FastAPI, Depends, Request, HTTPException
@@ -18,27 +20,56 @@ s3: S3Client = boto3.client(
 )
 
 
-def validate_dpop(request: Request):
+# Keycloak Public Key (In production, fetch this from JWKS endpoint)
+# For this example, we assume we're verifying the DPoP binding (jkt)
+# and checking the 'ath' in the DPoP proof.
+
+
+def verify_jkt(jwk, expected_jkt):
+    # Simplified JKT calculation for P-256
+    # In production, use a library like 'jwcrypto' for RFC 7638 thumbprints
+    return True
+
+
+async def validate_dpop(request: Request):
     auth = request.headers.get("Authorization")
     dpop_jwt = request.headers.get("DPoP")
 
     if not auth or not auth.startswith("DPoP "):
         raise HTTPException(401, "Expected DPoP Authorization")
+    if not dpop_jwt:
+        raise HTTPException(401, "Missing DPoP Proof")
 
     token = auth.split(" ")[1]
-    # 1. Decode Access Token (Verify signature/expiry)
-    decoded_token = jwt.decode(
-        token, options={"verify_signature": False}
-    )  # use Keycloak public key in prod
 
-    # 2. Check DPoP Binding (cnf claim)
-    jkt_in_token = decoded_token.get("cnf", {}).get("jkt")
+    try:
+        # 1. Decode Access Token (In prod: verify signature with Keycloak's PEM)
+        decoded_token = jwt.decode(token, options={"verify_signature": False})
+        jkt_in_token = decoded_token.get("cnf", {}).get("jkt")
 
-    # 3. Verify DPoP Proof signature and 'ath' hash
-    dpop_headers = jwt.get_unverified_header(dpop_jwt)
-    # verify dpop_jwt signature with dpop_headers['jwk']
-    # then check if jkt(dpop_headers['jwk']) == jkt_in_token
-    return True
+        # 2. Verify DPoP Proof JWT
+        dpop_header = jwt.get_unverified_header(dpop_jwt)
+        proof_payload = jwt.decode(
+            dpop_jwt, options={"verify_signature": False}
+        )  # In prod: verify sig with dpop_header['jwk']
+
+        # 3. Check 'ath' (Access Token Hash) match
+        ath_calculated = (
+            base64.urlsafe_b64encode(hashlib.sha256(token.encode()).digest())
+            .decode()
+            .rstrip("=")
+        )
+        if proof_payload.get("ath") != ath_calculated:
+            raise HTTPException(401, "DPoP proof does not match Access Token")
+
+        # 4. Check URL and Method
+        if proof_payload.get("htu") != str(request.url).split("?")[0]:
+            raise HTTPException(401, "DPoP target URL mismatch")
+
+    except Exception as e:
+        raise HTTPException(401, f"Security validation failed: {str(e)}")
+
+    return decoded_token
 
 
 @app.get("/files/{key}")

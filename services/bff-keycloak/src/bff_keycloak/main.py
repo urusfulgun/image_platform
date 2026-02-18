@@ -1,16 +1,18 @@
 # bff.py
 import base64
 import hashlib
+import json
 import secrets
 import time
 import uuid
 import httpx
 import jwt
-from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi import Cookie, FastAPI, Request, Response, HTTPException
 from fastapi.responses import RedirectResponse
 from keycloak import KeycloakOpenID, pkce_utils
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+import redis.asyncio as redis
 
 app = FastAPI(title="BFF - PKCE & DPoP Gateway")
 
@@ -44,6 +46,9 @@ PUBLIC_KEY_JWK = {
     .rstrip("="),
 }
 
+# Redis setup (Assume redis is available at this hostname)
+redis_client = redis.from_url("redis://redis:6379/0", decode_responses=True)
+
 
 def create_dpop_proof(method: str, url: str, access_token: str = None):
     """Generates a DPoP Proof JWT."""
@@ -74,27 +79,33 @@ async def login():
         verifier, method=code_challenge_method
     )
 
+    # Generate a temporary flow ID to link the callback to the verifier
+    flow_id = str(uuid.uuid4())
+    await redis_client.setex(f"pkce:{flow_id}", 300, verifier)
+
     # Store verifier in a secure session/cookie (omitted for brevity)
     auth_url = keycloak_openid.auth_url(
         redirect_uri="http://localhost:8000/callback",
         scope="openid",
-        state="state",
+        state=flow_id,
         code_challenge=challenge,
         code_challenge_method=code_challenge_method,
     )
     resp = RedirectResponse(auth_url)
-    resp.set_cookie("pkce_verifier", verifier, httponly=True)
     return resp
 
 
 @app.get("/callback")
-async def callback(code: str, request: Request):
+async def callback(code: str, state: str):
     # 1. Retrieve the PKCE verifier stored during the initial /login
-    verifier = request.cookies.get("pkce_verifier")
+    verifier = await redis_client.get(f"pkce:{state}")
     if not verifier:
-        raise HTTPException(status_code=400, detail="PKCE verifier missing")
+        raise HTTPException(
+            status_code=400, detail="Invalid session or expired PKCE verifier"
+        )
 
     # 2. Define the Token Endpoint for the DPoP proof
+    # Keycloak Token Exchange with DPoP
     # In Docker, this is usually http://keycloak:8080/...
     token_url = f"{KEYCLOAK_BASE_URL}/realms/myrealm/protocol/openid-connect/token"
 
@@ -119,7 +130,29 @@ async def callback(code: str, request: Request):
             redirect_uri="http://localhost:8000/callback",
             code_verifier=verifier,
         )
-        return token_response
+
+        # 6. Create Opaque Session
+        session_id = secrets.token_urlsafe(32)
+        # Store the tokens in Redis (TTL matched to refresh token or arbitrary 1 hour)
+        await redis_client.setex(
+            f"session:{session_id}", 3600, json.dumps(token_response)
+        )
+        await redis_client.delete(f"pkce:{state}")  # Cleanup
+
+        # 7. Return Opaque Token via Secure Cookie
+        response = RedirectResponse(
+            url="http://localhost:8000/docs"
+        )  # Redirect to UI for example "http://localhost:3000/dashboard"
+        response.set_cookie(
+            key="bff_session",
+            value=session_id,
+            httponly=True,
+            secure=False,  # Set to False only for local non-https dev # MUST be False for http://localhost dev
+            samesite="lax",
+            max_age=3600,
+        )
+
+        return response
 
     except Exception as e:
         # If Keycloak returns an error (like invalid DPoP), it will be caught here
@@ -127,33 +160,31 @@ async def callback(code: str, request: Request):
 
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def proxy_to_rs(path: str, request: Request):
-    # 1. Safely extract the token
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.replace("Bearer ", "").replace("DPoP ", "").strip()
+async def proxy_to_rs(
+    path: str,
+    request: Request,
+    bff_session: str | None = Cookie(None),
+):
+    if not bff_session:
+        raise HTTPException(status_code=401, detail="No session cookie found. Please /login first.")
+    # 1. Lookup session in Redis
+    session_data_raw = await redis_client.get(f"session:{bff_session}")
+    if not session_data_raw:
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+    session_data = json.loads(session_data_raw)
+    access_token = session_data.get("access_token")
 
-    if not token:
-        return Response(content="Missing Token", status_code=401)
-
-    target_url = f"{RS_URL}/{path}"
-
-    # 2. Generate DPoP Proof
-    # Ensure this returns a valid JWT string, not None!
-    dpop_proof = create_dpop_proof(request.method, target_url, token)
-
-    if not dpop_proof:
-        return Response(content="DPoP Generation Failed", status_code=500)
+    # 2. Proxy request to Resource Server with DPoP
+    target_url = f"{RS_URL}/files/{path}"
+    dpop_proof = create_dpop_proof(request.method, target_url, access_token)
 
     async with httpx.AsyncClient() as client:
-        # 3. Use a clean header dictionary
         headers = {
-            "Authorization": f"DPoP {token}",  # Double check: no space if token is empty
-            "DPoP": dpop_proof.strip(),  # Strip any accidental newlines
+            "Authorization": f"DPoP {access_token}",
+            "DPoP": dpop_proof,
         }
-
-        # Forward existing headers but override Auth/DPoP
-        # (Be careful not to forward 'Host' header from the original request)
-
+        
         proxy_req = client.build_request(
             method=request.method,
             url=target_url,
@@ -162,4 +193,4 @@ async def proxy_to_rs(path: str, request: Request):
         )
         rp_resp = await client.send(proxy_req)
 
-    return Response(content=rp_resp.content, status_code=rp_resp.status_code)
+    return Response(content=rp_resp.content, status_code=rp_resp.status_code, headers=dict(rp_resp.headers))

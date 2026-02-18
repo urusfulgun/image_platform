@@ -42,6 +42,7 @@ services:
       target: production
     depends_on:
       - keycloak
+      - redis
     environment:
       - PYTHONPATH=:/app/src:/app/tests
       - API_HOST=bff-keycloak
@@ -169,6 +170,8 @@ services:
       - redis_data:/data
     # command: redis-server --appendonly yes --requirepass yourpassword
     # Uncomment the command above to enable data persistence (AOF) and set a password
+    networks:
+      - proxynet
 
   rustfs:
     container_name: rustfs_storage
