@@ -16,6 +16,7 @@ dependencies = [
     "joserfc>=1.6.1",
     "cryptography>=46.0.4",
     "itsdangerous>=2.2.0",
+    "shared-core",
 ]
 
 [dependency-groups]
@@ -33,3 +34,6 @@ bff = "bff:main"
 [build-system]
 requires = ["uv_build>=0.9.30,<0.10.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+shared-core = { path = "../../shared-core/shared_core", editable = true }

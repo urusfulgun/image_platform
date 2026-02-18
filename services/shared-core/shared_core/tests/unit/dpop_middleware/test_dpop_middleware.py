@@ -8,7 +8,12 @@ from joserfc import jwt, jwk
 from fastapi import HTTPException, Request
 from shared_core.schemas.exceptions import DPoPError
 from shared_core.middlewares.dpop import DPoPMiddleware
-from utils.helpers import create_dpop_proof, get_mock_request_valid_nonce, get_ath
+from utils.helpers import (
+    create_dpop_proof,
+    get_ec_keys,
+    get_mock_request_valid_nonce,
+    get_ath,
+)
 from shared_core.shared_types.http_request import MethodType
 
 
@@ -35,7 +40,7 @@ async def test_middleware_nonce_challenge(
 
 @pytest.mark.asyncio
 async def test_full_dpop_success(
-    middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
+    middleware_instance: DPoPMiddleware, test_keys: tuple[jwk.ECKey,  jwk.ECKey], mock_redis
 ):
     """Test the 'Happy Path' where all bindings are valid."""
 
@@ -53,7 +58,7 @@ async def test_full_dpop_success(
 
 @pytest.mark.asyncio
 async def test_expired_or_missing_nonce(
-    middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
+    middleware_instance: DPoPMiddleware, test_keys: tuple[jwk.ECKey,  jwk.ECKey], mock_redis
 ):
     """Test the 'Happy Path' where all bindings are valid."""
     nonce = "valid-nonce"
@@ -74,7 +79,7 @@ async def test_expired_or_missing_nonce(
 
 @pytest.mark.asyncio
 async def test_jti_replay_fails(
-    middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
+    middleware_instance: DPoPMiddleware, test_keys: tuple[jwk.ECKey,  jwk.ECKey], mock_redis
 ):
     nonce = "valid-nonce"
     jti_1 = "unique-jti-123"
@@ -119,16 +124,22 @@ async def test_jti_replay_fails(
 
 @pytest.mark.asyncio
 async def test_dpop_invalid_htu(
-    middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
+    middleware_instance: DPoPMiddleware, test_keys: tuple[jwk.ECKey,  jwk.ECKey], mock_redis
 ):
     """Test that proof with a different HTU than the request fails."""
     # Setup
-    proof_key = jwk.generate_key("EC", "P-256")
+    proof_private_key, proof_public_key = get_ec_keys()
     nonce = "valid-nonce"
     await mock_redis.set(f"dpop_nonce:{nonce}", "1")
 
     # Proof says /secure but request is /admin
-    proof = create_dpop_proof(proof_key, "GET", "https://api.com/secure", nonce=nonce)
+    proof = create_dpop_proof(
+        proof_private_key,
+        proof_public_key,
+        "GET",
+        "https://api.com/secure",
+        nonce=nonce,
+    )
 
     request = MagicMock(spec=Request)
     request.headers = {"Authorization": "DPoP valid-at", "DPoP": proof}
@@ -144,15 +155,15 @@ async def test_dpop_invalid_htu(
 
 @pytest.mark.asyncio
 async def test_dpop_key_mismatch(
-    middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
+    middleware_instance: DPoPMiddleware, test_keys: tuple[jwk.ECKey,  jwk.ECKey], mock_redis
 ):
     """Test that using a different key than the one bound to the token fails."""
     # Token is bound to Key A
-    key_a = jwk.generate_key("EC", "P-256")
-    jkt_a = jwk.thumbprint(key_a, "sha256")
+    private_key_a, public_key_a = get_ec_keys()
+    jkt_a = jwk.thumbprint(public_key_a, "sha256")
 
     # Proof is signed by Key B
-    key_b = jwk.generate_key("EC", "P-256")
+    private_key_b, public_key_b = get_ec_keys()
     time_of_creation = int(time.time())
     at_payload = {
         "iss": "https://auth.com",
@@ -166,7 +177,12 @@ async def test_dpop_key_mismatch(
     nonce = "valid-nonce"
     await mock_redis.set(f"dpop_nonce:{nonce}", "1")
     proof = create_dpop_proof(
-        key_b, "GET", "https://api.com/data", ath=get_ath(access_token), nonce=nonce
+        private_key_b,
+        public_key_b,
+        "GET",
+        "https://api.com/data",
+        ath=get_ath(access_token),
+        nonce=nonce,
     )
 
     request = MagicMock(spec=Request)
@@ -182,7 +198,7 @@ async def test_dpop_key_mismatch(
 
 @pytest.mark.asyncio
 async def test_dpop_token_expired(
-    middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
+    middleware_instance: DPoPMiddleware, test_keys: tuple[jwk.ECKey,  jwk.ECKey], mock_redis
 ):
     """Test that an expired Access Token fails even with a valid Proof."""
     time_of_creation = int(time.time())
@@ -204,7 +220,7 @@ async def test_dpop_token_expired(
 
 @pytest.mark.asyncio
 async def test_dpop_invalid_ath(
-    middleware_instance: DPoPMiddleware, test_keys: jwk.ECKey, mock_redis
+    middleware_instance: DPoPMiddleware, test_keys: tuple[jwk.ECKey,  jwk.ECKey], mock_redis
 ):
     """Test that a proof with a mismatched Access Token Hash (ath) fails."""
     proof_key = jwk.generate_key("EC", "P-256")

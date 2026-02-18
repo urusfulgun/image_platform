@@ -1,3 +1,5 @@
+from collections.abc import AsyncGenerator
+from fastapi import HTTPException
 import httpx
 from typing import Generator
 
@@ -24,17 +26,22 @@ class DPoPAuth(httpx.Auth):
         self.signer = signer
         self.access_token = access_token
         self.refresh_token = refresh_token
-        self.refresh_url = refresh_url
+        self.refresh_url = str(refresh_url)
         self.server_nonce = None
 
-    def auth_flow(
-        self, request: httpx.Request
-    ) -> Generator[httpx.Request, httpx.Response, None]:
+    async def async_auth_flow(
+        self,
+        request: httpx.Request,
+    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
         # 1. Attach the DPoP Proof and Authorization header
         # Initial Attempt
         self._apply_dpop(request)
 
         response = yield request
+
+        # Capture nonce if present in successful/incidental responses
+        if response.status_code < 300 and "DPoP-Nonce" in response.headers:
+            self.server_nonce = response.headers.get("DPoP-Nonce")
 
         # 2. Handle DPoP Nonce Refresh (RFC 9449)
         # Check for Nonce Update (Server says: "I need a fresh nonce")
@@ -47,20 +54,25 @@ class DPoPAuth(httpx.Auth):
         # 3. Handle Token Refresh
         # Check for Token Expiry (Server says: "Token is dead")
         if response.status_code == 401:
-            refresh_response = yield self.build_refresh_request()
             # Refresh the token
-            refresh_success = yield from self._do_token_refresh()
+            async for request in self._do_token_refresh_flow():
+                response = yield request
             if refresh_success:
                 # Retry original request with NEW token and NEW proof
                 self._apply_dpop(request)
                 response = yield request
-                
-                # Final check: Did the retry of the original request 
+
+                # Final check: Did the retry of the original request
                 # also need a new nonce? (Rare but possible)
                 if self._is_nonce_error(response):
                     self.server_nonce = response.headers.get("DPoP-Nonce")
                     self._apply_dpop(request)
                     yield request
+            else:
+                # Trigger a logout/session deletion logic here
+                raise HTTPException(
+                    status_code=401, detail="Session expired - please login again"
+                )
 
     def _apply_dpop(self, request: httpx.Request):
         """Generates a fresh DPoP JWT and updates headers."""
@@ -80,8 +92,12 @@ class DPoPAuth(httpx.Auth):
             "DPoP-Nonce"
         ) is not None and response.status_code in (400, 401)
 
-    def _do_token_refresh(self) -> Generator[httpx.Request, httpx.Response, bool]:
-        """Handles the refresh flow, including potential nonce challenges."""
+    async def _do_token_refresh_flow(self) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        """Handles the refresh flow, including potential nonce challenges.
+        Internal helper to handle the refresh dance.
+        We don't use 'yield from' here because async generators handle 
+        delegation differently than sync ones in some httpx versions.
+        """
         refresh_req = self.build_refresh_request()
         refresh_res = yield refresh_req
 
@@ -93,8 +109,8 @@ class DPoPAuth(httpx.Auth):
 
         if refresh_res.status_code == 200:
             self.update_tokens(refresh_res)
-            return True
-        return False
+            return
+        return
 
     def build_refresh_request(self) -> httpx.Request:
         # Note: The refresh request itself MUST be DPoP signed

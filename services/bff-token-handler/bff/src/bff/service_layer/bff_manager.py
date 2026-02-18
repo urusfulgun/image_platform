@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Literal, Self
 import httpx
+from pydantic import HttpUrl
 import redis.asyncio as redis
 import json
 from cryptography.hazmat.primitives import serialization
@@ -110,11 +111,11 @@ class RedisBFFManager:
         )  # Reconstitution logic here
 
         # Initialize the custom Auth flow
-        auth = DPoPAuth(
+        auth = await self.create_dpop_auth(
             signer=signer,
             access_token=session_data.access_token,
             refresh_token=session_data.refresh_token,
-            refresh_url=settings.token_url,
+            refresh_url=settings.token_url
         )
 
         # Optional: Restore the last known nonce to avoid a 401 on first hit
@@ -128,6 +129,76 @@ class RedisBFFManager:
         self._local_cache.put(session_id, client)
 
         return client
+    
+    async def create_dpop_auth(
+            signer,
+            access_token: str,
+            refresh_token: str,
+            refresh_url: HttpUrl,
+    ) -> DPoPAuth:
+        """
+        Initialization of the custom Auth flow
+        
+        :param signer: Description
+        :param access_token: Description
+        :type access_token: str
+        :param refresh_token: Description
+        :type refresh_token: str
+        :param refresh_url: Description
+        :type refresh_url: HttpUrl
+        :return: Description
+        :rtype: DPoPAuth
+        """
+        return DPoPAuth(
+            signer=signer,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            refresh_url=refresh_url,
+        )
+    
+    async def update_session_data(
+        self,
+        session_id: str,
+        access_token: str,
+        refresh_token: str,
+        last_nonce: str | None,
+        redis_client: redis.Redis,
+    ) -> None:
+        """
+        Updates the existing session in Redis with new tokens or nonces.
+        This is typically called by a background task after a DPoPAuth flow.
+        """
+        record_key = f"session:{session_id}"
+        
+        # 1. Fetch current data to preserve the private_key and kid
+        raw_data = await redis_client.get(record_key)
+        if not raw_data:
+            logger.warning(f"Attempted to update non-existent session: {session_id}")
+            return
+
+        # 2. Parse and update
+        try:
+            current_payload = RedisSessionPayload.model_validate_json(raw_data)
+            
+            # Update mutable fields
+            updated_payload = current_payload.model_copy(update={
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "last_nonce": last_nonce
+            })
+
+            # 3. Persist back to Redis with the original TTL
+            # We use setex to ensure the session doesn't become immortal
+            await redis_client.setex(
+                name=record_key,
+                time=self.ttl,
+                value=updated_payload.model_dump_json(exclude_unset=True)
+            )
+            
+            logger.debug(f"Successfully synced DPoP state to Redis for session {session_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to update Redis session data: {e}")
 
     async def shutdown(self):
         """Call this during the FastAPI/Starlette shutdown event."""

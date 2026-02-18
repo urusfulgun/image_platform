@@ -5,7 +5,7 @@ import time
 from fastapi import Request, HTTPException, Depends
 from joserfc import jwt, jwk
 from pydantic import HttpUrl
-from shared_core.schemas.dpop import DPoPHeader, DPoPProofPayload
+from shared_core.schemas.dpop import DPoPProofHeader, DPoPProofPayload
 from shared_core.shared_types.http_request import MethodType
 from bff.config import BFFSettings
 from shared_core.schemas import jwk as jwk_schema
@@ -24,12 +24,12 @@ class BFFProxyService:
 
     def _produce_dpop_header(
         self, typ: Literal["dpop+jwt"], alg: Literal["ES256"]
-    ) -> DPoPHeader:
-        return DPoPHeader(
+    ) -> DPoPProofHeader:
+        return DPoPProofHeader(
             typ=typ,
             alg=alg,
-            jwk=jwk_schema.ECJWK.model_validate(
-                **self.dpop_private_key.as_dict(is_private=False)
+            jwk=jwk_schema.DPoPClientPublicKey.model_validate(
+                self.dpop_private_key.as_dict(is_private=False)
             ),
         )
 

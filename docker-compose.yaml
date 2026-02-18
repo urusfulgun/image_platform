@@ -1,4 +1,106 @@
 services:
+  postgres-keycloak:
+    image: postgres:16
+    volumes:
+      - postgres_data_keycloak:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - proxynet
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.3
+    command: start-dev
+    environment:
+      - KC_HOSTNAME_URL=http://keycloak:8080
+      - KC_HOSTNAME_STRICT=false
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres-keycloak/keycloak
+      - KC_DB_USERNAME=keycloak
+      - KC_DB_PASSWORD=password
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-keycloak:
+        condition: service_healthy
+    networks:
+      - proxynet
+
+  bff-keycloak:
+    build:
+      context: .
+      dockerfile: docker/bff-keycloak.Dockerfile
+      target: production
+    depends_on:
+      - keycloak
+    environment:
+      - PYTHONPATH=:/app/src:/app/tests
+      - API_HOST=bff-keycloak
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - UV_DEFAULT_ENV_FILE=:.env
+      - GRANIAN_HOST=0.0.0.0
+      - GRANIAN_PORT=8000
+      - GRANIAN_INTERFACE=asgi
+      # - GRANIAN_SSL_CERTIFICATE=/certs/cert.pem
+      # - GRANIAN_SSL_KEYFILE=/certs/key.pem
+    # entrypoint: /app/entrypoint.sh
+    ports:
+      - "8000:8000"
+    # volumes:
+    #   - ./services/bff-keycloak:/app:cached
+    networks:
+      - proxynet
+    command: >
+      uv run 
+      granian src.bff_keycloak.main:app  
+      --interface asgi
+    # healthcheck:
+    #   test: ["CMD", "curl", "--resolve", "bff-keycloak:8000:127.0.0.1", "-f", "http://bff-keycloak:8000/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    # entrypoint: /app/entrypoint.sh
+
+  resource-server:
+    build:
+      context: .
+      dockerfile: docker/resource-server.Dockerfile
+      target: production
+    depends_on:
+      - keycloak
+    environment:
+      - PYTHONPATH=:/app/src:/app/tests
+      - API_HOST=resource-server
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - UV_DEFAULT_ENV_FILE=:.env
+      - GRANIAN_HOST=0.0.0.0
+      - GRANIAN_PORT=8001
+      - GRANIAN_INTERFACE=asgi
+      # - GRANIAN_SSL_CERTIFICATE=/certs/cert.pem
+      # - GRANIAN_SSL_KEYFILE=/certs/key.pem
+    # entrypoint: /app/entrypoint.sh
+    ports:
+      - "8001:8001"
+    # volumes:
+    #   - ./services/bff-keycloak:/app:cached
+    networks:
+      - proxynet
+    command: >
+      uv run 
+      granian src.resource_server_keycloak.main:app  
+      --interface asgi
+
   # Nginx Reverse Proxy
   nginx-gateway:
     image: nginx:latest
@@ -77,10 +179,11 @@ services:
       - "9001:9001"
     volumes:
       # RustFS typically looks in /etc/rustfs/certs for TLS files
-      - ./secrets/rustfs/certs/rustfs_cert.pem:/opt/tls/rustfs_cert.pem:ro
-      - ./secrets/rustfs/certs/rustfs_key.pem:/opt/tls/rustfs_key.pem:ro
+      # - ./secrets/rustfs/certs/rustfs_cert.pem:/opt/tls/rustfs_cert.pem:ro
+      # - ./secrets/rustfs/certs/rustfs_key.pem:/opt/tls/rustfs_key.pem:ro
       # Data persistence
-      - ./persistent_data/rustfs/data:/data
+      # - ./persistent_data/rustfs/data:/data
+      - rastfs_data:/data
     environment:
       # - RUSTFS_VOLUMES=/data/rustfs{0..3} # Define 4 storage volumes
       - RUSTFS_ADDRESS=0.0.0.0:9000
@@ -92,7 +195,7 @@ services:
       - RUSTFS_ACCESS_KEY=admin
       - RUSTFS_SECRET_KEY=password
       - RUSTFS_OBS_LOGGER_LEVEL=info
-      - RUSTFS_TLS_PATH=/opt/tls
+      # - RUSTFS_TLS_PATH=/opt/tls
     networks:
       - proxynet
     # healthcheck:
@@ -135,8 +238,8 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: example@example.com
       PGADMIN_DEFAULT_PASSWORD: password#11
-    depends_on:
-      - postgres
+    # depends_on:
+    #   - postgres
     networks:
       - proxynet
   
@@ -195,3 +298,9 @@ services:
 networks:
   proxynet:
     name: custom_network
+
+volumes:
+  postgres_data:
+  postgres_data_keycloak:
+  redis_data:
+  rastfs_data:

@@ -3,15 +3,16 @@ import pytest_asyncio
 from fastapi import FastAPI, Request
 from joserfc import jwk
 from unittest.mock import AsyncMock, MagicMock
+from shared_core.abstract.dpop_signer import DPoPSigner
+from shared_core.services.dpop_session import DPoPAuth
 from shared_core.schemas.dpop import DPoPAccessTokenPayload
 from shared_core.middlewares.dpop import DPoPMiddleware
-
+from utils.helpers import get_ec_keys
 
 @pytest.fixture(scope="session")
-def test_keys() -> jwk.ECKey:
+def test_keys() -> tuple[jwk.ECKey, jwk.ECKey]:
     """Generates an ephemeral EC key pair for signing test tokens."""
-    key = jwk.generate_key("EC", "P-256")
-    return key
+    return get_ec_keys()
 
 
 @pytest.fixture
@@ -43,10 +44,10 @@ def mock_redis():
     mock.set.side_effect = side_effect_set
     mock.exists.side_effect = side_effect_exists
     mock.delete.side_effect = side_effect_delete
-    
+
     # Allow resetting the storage between tests if needed
     mock.flushall = AsyncMock(side_effect=lambda: storage.clear())
-    
+
     return mock
 
 
@@ -64,13 +65,33 @@ def app(mock_redis):
 
 
 @pytest.fixture
-def middleware_instance(app, test_keys: jwk.ECKey):
+def middleware_instance(app, test_keys: tuple[jwk.ECKey,  jwk.ECKey]):
     """Initializes the middleware with session-based test keys."""
+
+    _, public_key = test_keys
 
     # We pass the public key for verification
     return DPoPMiddleware(
         app=app,
-        authz_public_key=test_keys.as_pem().decode(),
+        authz_public_key=public_key.as_pem().decode(),
         allowed_issuer="https://auth.example.com",
         leeway_seconds=30,
+    )
+
+
+@pytest.fixture
+def mock_signer():
+    signer = MagicMock(spec=DPoPSigner)
+    # Simulate a valid DPoP JWT return
+    signer.sign_proof.return_value = "mock_dpop_jwt_string"
+    return signer
+
+
+@pytest.fixture
+def auth_instance(mock_signer):
+    return DPoPAuth(
+        signer=mock_signer,
+        access_token="initial_access_token",
+        refresh_token="initial_refresh_token",
+        refresh_url="https://auth.server/token",
     )

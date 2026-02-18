@@ -26,6 +26,23 @@ class BFFSettings(BaseSettings):
     # Downstream API Gateway
     API_GATEWAY_URL: HttpUrl
 
+    REDIS_URL: HttpUrl = "redis://localhost:6379/0"
+
+    # BFF url
+    BFF_URL: HttpUrl
+
+    HOME_PAGE: HttpUrl
+
+    @property
+    def authorize_url(self) -> str:
+        # self.KEYCLOAK_BASE_URL is inside cluster network but localhost outside
+        return f"{self.KEYCLOAK_BASE_URL}/oauth2/default/v1/authorize"
+
+    @property
+    def redirect_uri(self) -> str:
+        # self.BFF_URL is inside cluster network but localhost outside
+        return f"{self.BFF_URL}/authorization-code/callback"
+
     @property
     def oidc_well_known_url(self) -> str:
         return f"{self.KEYCLOAK_BASE_URL}/realms/{self.OIDC_REALM}/.well-known/openid-configuration"

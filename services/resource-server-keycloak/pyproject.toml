@@ -1,0 +1,30 @@
+[project]
+name = "resource-server-keycloak"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "urusfulgun", email = "panterapardusspelaea48@gmail.com" }
+]
+requires-python = ">=3.14.2"
+dependencies = [
+    "boto3>=1.42.50",
+    "cryptography>=46.0.5",
+    "fastapi>=0.129.0",
+    "granian>=2.7.1",
+    "httpx>=0.28.1",
+    "pyjwt>=2.11.0",
+    "python-keycloak>=7.1.1",
+]
+
+[project.scripts]
+resource-server-keycloak = "resource_server_keycloak:main"
+
+[build-system]
+requires = ["uv_build>=0.10.0,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "types-boto3[essential]>=1.42.51",
+]

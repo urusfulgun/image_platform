@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import Request, HTTPException, status
 from pydantic import ValidationError
+from shared_core.helpers.key_importing import convert_to_joserfc_key
 from shared_core.schemas import exceptions
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -13,11 +14,34 @@ from joserfc.jwk import thumbprint
 import redis.asyncio as redis
 
 from shared_core.schemas.dpop import (
-    DPoPHeader,
+    DPoPProofHeader,
     DPoPProofPayload,
     DPoPAccessTokenPayload,
     DPoPProof,
 )
+
+
+# Define the Lua script as a constant
+# ARGV[1] is the nonce key
+NONCE_CHECK_LUA = """
+local deleted = redis.call('DEL', ARGV[1])
+if deleted == 1 then
+    return 1
+else
+    return 0
+end
+"""
+
+# ARGV[1] = jti_key, ARGV[2] = ttl_seconds
+JTI_REPLAY_LUA = """
+local exists = redis.call('EXISTS', ARGV[1])
+if exists == 1 then
+    return 0
+else
+    redis.call('SET', ARGV[1], '1', 'EX', ARGV[2])
+    return 1
+end
+"""
 
 
 class DPoPMiddleware(BaseHTTPMiddleware):
@@ -52,6 +76,10 @@ class DPoPMiddleware(BaseHTTPMiddleware):
         """Helper to ensure key consistency."""
         return f"{self.NONCE_PREFIX}{nonce}"
 
+    def register_lua_scripts(self, redis_pool: redis.Redis):
+        self.nonce_script = redis_pool.register_script(NONCE_CHECK_LUA)
+        self.jti_replay_script = redis_pool.register_script(JTI_REPLAY_LUA)
+
     async def dispatch(self, request: Request, call_next):
         """
         Intercepts requests to validate DPoP proofs for 'DPoP' authorization schemes.
@@ -74,19 +102,17 @@ class DPoPMiddleware(BaseHTTPMiddleware):
         if not auth_header or not auth_header.startswith("DPoP "):
             return await call_next(request)
 
-        try:
-            if not dpop_jwt:
-                return await self.handle_nonce_challenge(
-                    redis_cache, "DPoP header missing"
-                )
+        if not dpop_jwt:
+            return await self.handle_nonce_challenge(redis_cache, "DPoP header missing")
 
+        try:
             # 1. DPoP Proof Phase
             proof = self.verify_and_parse_proof(dpop_jwt)
 
             # 2. Nonce Handshake Phase
-            if not await self.check_nonce(redis_cache, proof.payload.nonce):
+            if not await self.check_nonce_atomic(redis_cache, proof.payload.nonce):
                 return await self.handle_nonce_challenge(
-                    redis_cache, "Invalid or missing nonce"
+                    redis_cache, "Nonce already used or invalid"
                 )
 
             # 3. Access Token Phase
@@ -98,7 +124,7 @@ class DPoPMiddleware(BaseHTTPMiddleware):
 
             # 5. Replay Protection
             if not await self.is_not_replay(redis_cache, proof.payload.jti):
-                raise exceptions.DPoPReplayError("Proof JTI already used")
+                raise exceptions.DPoPReplayError("Proof JTI already used or in-flight")
 
             request.state.user_sub = at_claims.sub
             return await call_next(request)
@@ -116,20 +142,27 @@ class DPoPMiddleware(BaseHTTPMiddleware):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token signature or format",
             )
-        except (exceptions.DPoPBindingError, 
-            exceptions.DPoPReplayError, 
-            exceptions.DPoPKeyMismatchError) as e:
+        except (
+            exceptions.DPoPBindingError,
+            exceptions.DPoPReplayError,
+            exceptions.DPoPKeyMismatchError,
+        ) as e:
             # These are all 401 Unauthorized issues
             # We ensure the 'detail' from the custom exception is passed through
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=getattr(e, "detail", str(e))
+                detail=getattr(e, "detail", str(e)),
             )
         except exceptions.DPoPError as e:
             # Generic catch-all for other DPoP issues
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=getattr(e, "detail", "DPoP validation failed")
+                detail=getattr(e, "detail", "DPoP validation failed"),
+            )
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=e.errors(),
             )
         except (exceptions.DPoPBindingError, exceptions.DPoPReplayError) as e:
             # All binding (htu, htm, iss, ath) and replay issues go here
@@ -186,8 +219,8 @@ class DPoPMiddleware(BaseHTTPMiddleware):
 
         # Pydantic handles iat/htu/iss validation here automatically
         return DPoPProof(
-            header=DPoPHeader(**verified.header),
-            payload=DPoPProofPayload(**verified.claims),
+            header=DPoPProofHeader.model_validate(verified.header),
+            payload=DPoPProofPayload.model_validate(verified.claims),
         )
 
     def validate_protocol_bindings(
@@ -215,7 +248,8 @@ class DPoPMiddleware(BaseHTTPMiddleware):
             DPoPBindingError: If any of the bindings (Key, Token, or Protocol) fail.
         """
         # A) Key Binding (cnf.jkt == thumbprint(jwk))
-        proof_jkt = thumbprint(jwk.import_key(proof.header.jwk), "sha256")
+        retrieved_public_key = convert_to_joserfc_key(proof.header.jwk)
+        proof_jkt = thumbprint(retrieved_public_key, "sha256")
         at.verify_binding(proof_jkt)
 
         # B) Token Binding (ath == hash(access_token))
@@ -243,7 +277,9 @@ class DPoPMiddleware(BaseHTTPMiddleware):
         digest = hashlib.sha256(token.encode("ascii")).digest()
         return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
-    async def check_nonce(self, redis_cache: redis.Redis, nonce: Optional[str]) -> bool:
+    async def check_nonce_atomic(
+        self, redis_cache: redis.Redis, nonce: Optional[str]
+    ) -> bool:
         """
         Checks if the provided nonce exists in the server-side cache.
 
@@ -256,15 +292,17 @@ class DPoPMiddleware(BaseHTTPMiddleware):
         """
         if not nonce:
             return False
-        key = self._get_nonce_key(nonce)
 
-        # redis.delete returns the number of keys removed (int)
-        # In a real environment, this is 1 (success) or 0 (not found/already used)
-        deleted_count = await redis_cache.delete(key)
+        nonce_key = self._get_nonce_key(nonce)
 
-        return isinstance(deleted_count, int) and deleted_count > 0
+        # eval args: script, num_keys, *keys_and_args
+        # We pass 0 for num_keys and use ARGV for the key name
+        # (or 1 if you want to follow Redis Cluster key-slot conventions)
+        result = await redis_cache.eval(NONCE_CHECK_LUA, 0, nonce_key)
 
-    async def is_not_replay(self, redis_cache: redis.Redis, jti: str) -> bool:
+        return result == 1
+
+    async def is_not_replay_atomic(self, redis_cache: redis.Redis, jti: str) -> bool:
         """
         Checks the JTI against the replay cache to prevent replay attacks.
         Implements JTI Replay Protection.
@@ -277,16 +315,11 @@ class DPoPMiddleware(BaseHTTPMiddleware):
         Returns:
             bool: True if the JTI has not been seen before, False if it's a replay.
         """
-        key = f"dpop_jti:{jti}"
+        jti_key = f"dpop_jti:{jti}"
 
-        # We try to set the JTI. If it already exists, 'nx=True' causes
-        # Redis to return None/False.
-        # TTL should be at least as long as the Proof's 'iat' window (e.g., 300s).
-        success = await redis_cache.set(key, "1", ex=self.NONCE_TTL, nx=True)
+        result = await redis_cache.eval(JTI_REPLAY_LUA, 0, jti_key, self.NONCE_TTL)
 
-        if not success:
-            return False
-        return True
+        return result == 1
 
     async def handle_nonce_challenge(
         self, redis_cache: redis.Redis, detail: str

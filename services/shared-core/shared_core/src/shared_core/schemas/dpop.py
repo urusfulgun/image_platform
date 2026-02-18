@@ -9,9 +9,17 @@ from shared_core.schemas import jwk as jwk_schema
 
 
 class TemporalClaimsMixin(BaseModel):
-    """Shared logic for anything with iat/exp/nbf."""
+    """Shared logic for anything with iat/exp/nbf/jti."""
 
-    iat: int = Field(..., description="Issued at timestamp")
+    iat: int = Field(
+        default_factory=lambda: int(time.time()),
+        description="Time at which the JWT was created.",
+    )
+
+    jti: str = Field(
+        default_factory=lambda: str(uuid.uuid7()),
+        description="Unique identifier for the proof to prevent replay.",
+    )
 
     @field_validator("iat")
     @classmethod
@@ -23,35 +31,84 @@ class TemporalClaimsMixin(BaseModel):
         return v
 
 
-class DPoPHeader(BaseModel):
-    typ: Literal["dpop+jwt"]
-    alg: Literal["ES256"]
-    jwk: jwk_schema.ECJWK  # The public key
+class DPoPProofHeader(BaseModel):
+    """
+    Represents the header of a DPoP Proof JWT.
+    As per RFC 9449, this must contain the 'typ' and 'jwk' claims.
+    """
+
+    typ: Literal["dpop+jwt"] = Field(
+        ..., description="Must be exactly 'dpop+jwt' as per RFC 9449"
+    )
+
+    alg: Literal["ES256"] = Field(
+        default="ES256", description="Asymmetric algorithm used to sign the proof"
+    )
+
+    jwk: jwk_schema.DPoPClientPublicKey = Field(
+        ..., description="The public key used to sign this JWT, in JWK format"
+    )
+
+    class Config:
+        # Prevents extra fields from being injected into the header model
+        extra = "forbid"
+        # Ensures the model is read-only during the validation lifecycle
+        allow_mutation = False
+
+
+class AccessTokenJwtHeader(BaseModel):
+    # 'at+jwt' is the RFC 9068 standard
+    typ: Literal["at+jwt"] = Field(..., description="JWT type")
+
+    # Allow common secure algorithms; ES256 is preferred for DPoP
+    alg: Literal["ES256"] = Field(..., description="Signing algorithm")
+
+    # Key ID is essential for the Resource Server to find the AS public key
+    kid: str = Field(..., min_length=1, description="Key ID")
+
+    # Optional: X.509 Certificate thumbprint (common in enterprise OIDC)
+    x5t: str | None = None
+
+    class Config:
+        frozen = True  # Makes the model immutable and hashable
 
 
 class DPoPProofPayload(TemporalClaimsMixin):
-    iss: str | None = Field(None, description="(RFC 9449) The client id")
-    jti: str = Field(..., description="Unique identifier for replay protection")
-    htm: MethodType
+    iat: int = Field(
+        default_factory=lambda: int(time.time()),
+        description="Time at which the JWT was created.",
+    )
+
+    htm: MethodType = Field(..., description="The HTTP Method of the request.")
     htu: HttpUrl = Field(..., description="The HTTP URI without query or fragment")
+
+    sub: str | None = Field(None, description="(RFC 9449) The client id")
     nonce: str | None = Field(None, description="Server-provided freshness token")
     ath: str | None = Field(None, description="Required when calling Resource Servers")
 
-    @field_validator("htu")
+    @field_validator("htu", mode="before")
     @classmethod
-    def validate_htu_constraints(cls, v: HttpUrl) -> str:
+    def validate_htu_constraints(cls, v: Any) -> str:
         # RFC 9449: htu MUST NOT contain query or fragment
-        if v.query or v.fragment:
-            raise exceptions.DPoPBindingError(
-                "htu must not contain query parameters or fragments"
-            )
+        s = str(v)
+        if "?" in s or "#" in s:
+            raise ValueError("htu must not contain query or fragment")
+        return s.rstrip("/")
 
-        # We return the string representation for the model
-        return str(v)
+    @field_validator("iat")
+    @classmethod
+    def validate_iat(cls, v: int) -> int:
+        now = int(time.time())
+        # Proofs should be extremely short-lived (usually +/- 60-120 seconds)
+        if v > now + 60:
+            raise ValueError("Proof iat is in the future (clock skew)")
+        if v < now - 120:
+            raise ValueError("Proof has expired (issued too long ago)")
+        return v
 
 
 class DPoPProof(BaseModel):
-    header: DPoPHeader
+    header: DPoPProofHeader
     payload: DPoPProofPayload
 
     @model_validator(mode="after")
@@ -74,17 +131,71 @@ class DPoPProof(BaseModel):
 
 
 class ConfirmationClaim(BaseModel):
-    jkt: str = Field(..., description="The SHA-256 JWK Thumbprint")
+    """Represents the 'cnf' (Confirmation) claim, often used for Proof-of-Possession.
+
+    Mandatory for DPoP: Contains the JWK Thumbprint (jkt)
+    of the public key used to sign the DPoP proof.
+    """
+
+    jkt: str = Field(
+        ...,
+        description="The SHA-256 JWK Thumbprint."
+        "JWK Thumbprint used to bind the token to a specific key."
+        "Validates that the client presenting the token "
+        "possesses the private key used during token issuance.",
+    )
 
 
 class DPoPAccessTokenPayload(TemporalClaimsMixin):
-    iss: HttpUrl = Field(..., description="The Authorization Server issuer URL")
-    sub: uuid.UUID
-    iat: int
-    exp: int
+    ver: int = Field(1, description="The version of the access token schema.")
+    iss: HttpUrl = Field(
+        ...,
+        description="Issuer: The URL of the authorization server that issued the token.",
+    )
+    aud: str | list[str] = Field(
+        ...,
+        description="Audience: The intended recipient of the token (typically your API).",
+    )
+    exp: int = Field(
+        ..., description="Expiration: Unix timestamp of when the token expires."
+    )
+    cid: str = Field(
+        ...,
+        description="Client ID: The ID of the application that requested the token.",
+    )
+    uid: str = Field(
+        ..., description="User ID: The unique identifier for the user in STS or IdP."
+    )
+    sub: str = Field(..., description="Subject: Usually the user's email or username.")
     nbf: int | None = Field(None, description="Token not valid before this timestamp")
     cnf: ConfirmationClaim  # This makes the token DPoP-bound
-    scope: str | None = None
+    auth_time: int = Field(
+        ...,
+        description="Authentication Time: Unix timestamp of when the user originally authenticated."
+        "Time of original authentication. Vital for step-up security.",
+    )
+    scp: list[str] = Field(
+        default_factory=list,
+        description="Scopes: A list of permissions granted by this token. (e.g., 'openid profile')",
+    )
+
+    model_config = {
+        "extra": "ignore",
+        "json_schema_extra": {
+            "example": {
+                "sub": "user@example.com",
+                "cnf": {"jkt": "2HR2BW5-tan1aI6yIPHVOHwirAy4kQGWULoQHKUO0s4"},
+                "scp": "openid profile email",
+            }
+        },
+    }
+
+    def is_expired(self, leeway: int = 30) -> bool:
+        return int(time.time()) > (self.exp + leeway)
+
+    def verify_binding(self, thumbprint: str):
+        if self.cnf.jkt != thumbprint:
+            raise exceptions.DPoPKeyMismatchError("Key binding mismatch")
 
     def verify_iss(self, expected_as_url: HttpUrl) -> None:
         if str(self.iss).rstrip("/") != str(expected_as_url).rstrip("/"):
@@ -142,13 +253,57 @@ class DPoPAccessTokenPayload(TemporalClaimsMixin):
                 error_code="invalid_token",
             )
 
-    def verify_binding(self, incoming_jwk_thumbprint: str):
-        """Matches the Proof's key to the Token's binding."""
-        if self.cnf.jkt != incoming_jwk_thumbprint:
-            raise exceptions.DPoPKeyMismatchError(
-                "Token is not bound to the provided private key"
-            )
-        return True
+
+class IDTokenHeader(BaseModel):
+    typ: Literal["JWT"] = Field("JWT", description="Standard JWT type for ID Tokens")
+    alg: Literal["RS256", "ES256"] = Field(..., description="Signature algorithm")
+    kid: str = Field(..., description="Key ID for the identity provider's public key")
+
+    model_config = {"frozen": True}
+
+
+class IDTokenPayload(BaseModel):
+    # Standard OIDC Claims
+    iss: str = Field(..., description="Issuer: The Keycloak Realm URL")
+    sub: str = Field(..., description="Subject: The unique User ID")
+    aud: str = Field(..., description="Audience: The Client ID of your app")
+    exp: int = Field(..., description="Expiration time")
+    iat: int = Field(..., description="Issued at time")
+    auth_time: int | None = Field(None, description="Time of original authentication")
+
+    # User Profile Claims (Common in Keycloak)
+    name: str | None = Field(None, description="Full name of the user")
+    given_name: str | None = Field(None, alias="given_name")
+    family_name: str | None = Field(None, alias="family_name")
+    preferred_username: str | None = Field(None, description="Keycloak username")
+    email: str | None = Field(None, description="User's email address")
+    email_verified: bool = Field(False, description="Whether the email is verified")
+
+    # Session Management
+    sid: str | None = Field(None, description="Session ID for logout purposes")
+    azp: str = Field(..., description="Authorized party (the Client ID)")
+    nonce: str | None = Field(None, description="Nonce to prevent replay attacks")
+
+    # Keycloak Roles (Often mapped into ID Token)
+    realm_access: dict[str, list[str]] | None = None
+    resource_access: dict[str, Any] | None = None
+
+    @field_validator("iss", mode="before")
+    @classmethod
+    def normalize_iss(cls, v: Any) -> str:
+        if isinstance(v, str):
+            return v.rstrip("/")
+        return str(v)
+
+    def is_valid(self, leeway: int = 30) -> bool:
+        """Checks if the ID token is still chronologically valid."""
+        now = int(time.time())
+        return self.exp + leeway > now
+
+    model_config = {
+        "populate_by_name": True,
+        "extra": "ignore",  # Keycloak adds many custom claims
+    }
 
 
 class AuthorizeRequest(BaseModel):
@@ -175,6 +330,10 @@ class AuthorizeRequest(BaseModel):
         ...,
         description="An opaque value used to maintain state between request and callback",
     )
+    code_challenge: str
+    code_challenge_method: Literal["S256"]
+    response_type: Literal["code"]
+    response_mode: Literal["query"]
 
     @field_validator("scope")
     @classmethod
@@ -197,6 +356,13 @@ class AuthorizeRequest(BaseModel):
                     "response_type contains 'code'."
                 )
         return self
+
+
+class AccessTokenRequest(BaseModel):
+    grant_type: Literal["authorization_code"]
+    code: str
+    redirect_uri: str
+    code_verifier: str
 
 
 class RefreshAccessTokenRequestData(BaseModel):
