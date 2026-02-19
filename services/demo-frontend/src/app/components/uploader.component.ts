@@ -7,10 +7,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { UploadService } from '../services/upload.service';
 
 @Component({
-  selector: 'app-uploader',
-  standalone: true,
-  imports: [CommonModule, MatButtonModule, MatProgressBarModule, MatIconModule],
-  template: `
+    selector: 'app-uploader',
+    standalone: true,
+    imports: [CommonModule, MatButtonModule, MatProgressBarModule, MatIconModule],
+    template: `
     <div class="upload-container">
       <input type="file" #fileInput (change)="onFileSelected(fileInput.files)" hidden />
       
@@ -29,36 +29,60 @@ import { UploadService } from '../services/upload.service';
   `
 })
 export class UploaderComponent {
-  private uploadService = inject(UploadService);
+    private uploadService = inject(UploadService);
 
-  selectedFile = signal<File | null>(null);
-  fileName = signal<string>('');
-  progress = signal<number>(0);
-  uploading = signal<boolean>(false);
+    selectedFile = signal<File | null>(null);
+    fileName = signal<string>('');
+    progress = signal<number>(0);
+    uploading = signal<boolean>(false);
 
-  onFileSelected(files: FileList | null) {
-    if (files && files.length > 0) {
-      this.selectedFile.set(files[0]);
-      this.fileName.set(files[0].name);
-      this.progress.set(0);
+    onFileSelected(files: FileList | null) {
+        if (files && files.length > 0) {
+            this.selectedFile.set(files[0]);
+            this.fileName.set(files[0].name);
+            this.progress.set(0);
+        }
     }
-  }
 
-  startUpload() {
-    const file = this.selectedFile();
-    if (!file) return;
+    startUpload() {
+        const file = this.selectedFile();
+        if (!file) return;
 
-    this.uploading.set(true);
-    
-    // 1. Get Link -> 2. Upload
-    this.uploadService.getPresignedUrl(file.name).subscribe({
-      next: ({ url }) => {
-        this.uploadService.uploadToPresignedUrl(url, file).subscribe({
-          next: (p) => this.progress.set(p),
-          complete: () => this.uploading.set(false),
-          error: () => this.uploading.set(false)
+        this.uploading.set(true);
+
+        // 1. Get Link -> 2. Upload
+        this.uploadService.getPresignedUrl(file.name).subscribe({
+            next: ({ url }) => {
+                this.uploadService.uploadToPresignedUrl(url, file).subscribe({
+                    next: (p) => this.progress.set(p),
+                    complete: () => this.uploading.set(false),
+                    error: () => this.uploading.set(false)
+                });
+            }
         });
-      }
-    });
-  }
+    }
+
+    isDragging = signal<boolean>(false);
+
+    onDragOver(event: DragEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.isDragging.set(true);
+    }
+
+    onDragLeave(event: DragEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.isDragging.set(false);
+    }
+
+    onDrop(event: DragEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.isDragging.set(false);
+
+        if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+            this.onFileSelected(event.dataTransfer.files);
+        }
+    }
 }

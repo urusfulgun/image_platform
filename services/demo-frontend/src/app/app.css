@@ -1,0 +1,20 @@
+.spacer {
+  flex: 1 1 auto;
+}
+
+.upload-card {
+  width: 90%;
+  max-width: 500px;
+  margin-top: 2rem;
+  padding: 1rem;
+  border-radius: 12px;
+}
+
+mat-card-title {
+  margin-bottom: 8px !important;
+}
+
+mat-card-content {
+  margin-top: 16px;
+  line-height: 1.6;
+}
