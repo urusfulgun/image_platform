@@ -9,12 +9,30 @@ import httpx
 import jwt
 from fastapi import Cookie, FastAPI, Request, Response, HTTPException
 from fastapi.responses import RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
 from keycloak import KeycloakOpenID, pkce_utils
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 import redis.asyncio as redis
 
 app = FastAPI(title="BFF - PKCE & DPoP Gateway")
+
+
+# Define specifically allowed origins
+origins = [
+    "http://localhost:4200",  # Angular Default
+    "http://127.0.0.1:4200",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,     # REQUIRED for HttpOnly Cookies
+    allow_methods=["*"],        # Allows GET, POST, OPTIONS, etc.
+    allow_headers=["*"],        # Allows DPoP, Authorization, etc.
+    expose_headers=["DPoP"],    # If you need Angular to read DPoP headers
+)
+
 
 KEYCLOAK_BASE_URL = "http://keycloak:8080"
 

@@ -1,6 +1,6 @@
 # Variables
 COMPOSE_CMD := docker compose
-SERVICES := postgres-keycloak keycloak bff-keycloak rustfs resource-server redis
+SERVICES := postgres-keycloak keycloak bff-keycloak rustfs resource-server redis frontend
 
 .PHONY: up down restart status logs clean help
 

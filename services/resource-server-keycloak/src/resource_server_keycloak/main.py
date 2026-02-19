@@ -4,10 +4,23 @@ import hashlib
 import boto3
 import jwt
 from fastapi import FastAPI, Depends, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from botocore.client import Config
 from types_boto3_s3.client import S3Client
 
 app = FastAPI()
+
+origins = [
+    "http://localhost:4200",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True, 
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"], # PUT is critical for S3 uploads
+    allow_headers=["Content-Type", "Authorization", "DPoP"],
+)
 
 # RastFS (S3-Compatible) Configuration
 s3: S3Client = boto3.client(

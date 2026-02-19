@@ -1,4 +1,13 @@
 services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/demo-frontend.Dockerfile
+    ports:
+      - "4200:80"
+    depends_on:
+      - bff-keycloak
+
   postgres-keycloak:
     image: postgres:16
     volumes:
