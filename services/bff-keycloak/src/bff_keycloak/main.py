@@ -4,16 +4,47 @@ import hashlib
 import json
 import secrets
 import time
+from typing import Annotated
 import uuid
 import httpx
 import jwt
-from fastapi import Cookie, FastAPI, Request, Response, HTTPException
+from fastapi import Cookie, Depends, FastAPI, Request, Response, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from keycloak import KeycloakOpenID, pkce_utils
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 import redis.asyncio as redis
+
+class PresignedUrlRequestBFF(BaseModel):
+    # Matches Angular's camelCase exactly
+    file_name: str = Field(..., alias="fileName")
+
+    # This allows the model to accept the alias but still let you 
+    # access it via .file_name in your Python code
+    model_config = ConfigDict(
+        populate_by_name=True,
+        str_strip_whitespace=True
+    )
+
+class PresignedUrlRequest(BaseModel):
+    # Matches { "fileName": "..." } from Angular
+    file_name: str = Field(alias="fileName")
+
+    @field_validator("file_name")
+    @classmethod
+    def validate_filename(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Filename cannot be empty")
+        # Basic security: prevent path traversal
+        if "/" in v or "\\" in v:
+            raise ValueError("Filename cannot contain directory paths")
+        return v
+
+
+class PresignedUrlResponse(BaseModel):
+    url: str
 
 app = FastAPI(title="BFF - PKCE & DPoP Gateway")
 
@@ -22,16 +53,53 @@ app = FastAPI(title="BFF - PKCE & DPoP Gateway")
 origins = [
     "http://localhost:4200",  # Angular Default
     "http://127.0.0.1:4200",
+    "http://rustfs:9000",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,     # REQUIRED for HttpOnly Cookies
-    allow_methods=["*"],        # Allows GET, POST, OPTIONS, etc.
-    allow_headers=["*"],        # Allows DPoP, Authorization, etc.
-    expose_headers=["DPoP"],    # If you need Angular to read DPoP headers
+    allow_credentials=True,  # REQUIRED for HttpOnly Cookies
+    allow_methods=["*"],  # Allows GET, POST, OPTIONS, etc.
+    allow_headers=["*"],  # Allows DPoP, Authorization, etc.
+    expose_headers=["DPoP"],  # If you need Angular to read DPoP headers
 )
+
+http_client = httpx.AsyncClient(timeout=10.0)
+
+async def forward_to_rs(method: str, url: str, token: str, content: bytes | None = None):
+    # 1. Generate DPoP Proof for the RS target
+    dpop_proof = create_dpop_proof(method, url, token)
+
+    # 2. Prepare Clean Headers
+    headers = {
+        "Authorization": f"DPoP {token}",
+        "DPoP": dpop_proof,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    try:
+        # 3. Execute request using the pooled client
+        rp_resp = await http_client.request(
+            method=method,
+            url=url,
+            headers=headers,
+            content=content
+        )
+        
+        # 4. Clean up response headers for the browser
+        # Strips hop-by-hop headers that can break proxying (like Content-Length)
+        excluded = {"content-encoding", "transfer-encoding", "content-length", "connection"}
+        safe_headers = {k: v for k, v in rp_resp.headers.items() if k.lower() not in excluded}
+
+        return Response(
+            content=rp_resp.content,
+            status_code=rp_resp.status_code,
+            headers=safe_headers
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Upstream Resource Server error: {exc}")
 
 
 KEYCLOAK_BASE_URL = "http://keycloak:8080"
@@ -64,6 +132,8 @@ PUBLIC_KEY_JWK = {
     .rstrip("="),
 }
 
+EXCLUDED_HEADERS = ["host", "content-length", "authorization", "dpop", "cookie"]
+
 # Redis setup (Assume redis is available at this hostname)
 redis_client = redis.from_url("redis://redis:6379/0", decode_responses=True)
 
@@ -86,6 +156,17 @@ def create_dpop_proof(method: str, url: str, access_token: str = None):
         payload["ath"] = ath
 
     return jwt.encode(payload, PRIVATE_KEY, algorithm="ES256", headers=header)
+
+
+async def get_rs_token(bff_session: str | None = Cookie(None)) -> str:
+    if not bff_session:
+        raise HTTPException(status_code=401, detail="No session found")
+        
+    session_data_raw = await redis_client.get(f"session:{bff_session}")
+    if not session_data_raw:
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+    return json.loads(session_data_raw).get("access_token")
 
 
 @app.get("/login")
@@ -159,7 +240,8 @@ async def callback(code: str, state: str):
 
         # 7. Return Opaque Token via Secure Cookie
         response = RedirectResponse(
-            url="http://localhost:8000/docs"
+            # url="http://localhost:8000/docs"
+            url="http://localhost:4200"
         )  # Redirect to UI for example "http://localhost:3000/dashboard"
         response.set_cookie(
             key="bff_session",
@@ -184,12 +266,28 @@ async def proxy_to_rs(
     bff_session: str | None = Cookie(None),
 ):
     if not bff_session:
-        raise HTTPException(status_code=401, detail="No session cookie found. Please /login first.")
+        raise HTTPException(
+            status_code=401, detail="No session cookie found. Please /login first."
+        )
+    
+    # 2. Extract Body and Validate (If it's a POST to presign)
+    body_bytes = await request.body()
+    
+    # If the path is 'presign', we can validate the body specifically
+    if path == "presign" and request.method == "POST":
+        try:
+            # This ensures the body is valid JSON and contains 'fileName'
+            valid_data = PresignedUrlRequestBFF.model_validate_json(body_bytes)
+            # You can even modify/clean the data here if needed
+            body_bytes = valid_data.model_dump_json(by_alias=True).encode()
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid upload request format")
+
     # 1. Lookup session in Redis
     session_data_raw = await redis_client.get(f"session:{bff_session}")
     if not session_data_raw:
         raise HTTPException(status_code=401, detail="Session expired")
-    
+
     session_data = json.loads(session_data_raw)
     access_token = session_data.get("access_token")
 
@@ -198,17 +296,77 @@ async def proxy_to_rs(
     dpop_proof = create_dpop_proof(request.method, target_url, access_token)
 
     async with httpx.AsyncClient() as client:
+        # We extract necessary headers but skip 'host' and 'content-length'
+        # as httpx will recalculate them for the new request.
         headers = {
-            "Authorization": f"DPoP {access_token}",
-            "DPoP": dpop_proof,
+            k: v
+            for k, v in request.headers.items()
+            if k.lower() not in EXCLUDED_HEADERS
         }
-        
-        proxy_req = client.build_request(
-            method=request.method,
-            url=target_url,
-            headers=headers,
-            content=await request.body(),
-        )
-        rp_resp = await client.send(proxy_req)
 
-    return Response(content=rp_resp.content, status_code=rp_resp.status_code, headers=dict(rp_resp.headers))
+        headers.update(
+            {
+                "Authorization": f"DPoP {access_token}",
+                "DPoP": dpop_proof,
+            }
+        )
+
+        try:
+            proxy_req = client.build_request(
+                method=request.method,
+                url=target_url,
+                headers=headers,
+                params=dict(request.query_params),  # Forward query strings
+                content=await request.body(),
+            )
+            rp_resp = await client.send(proxy_req)
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail=f"RS unreachable: {exc}")
+    # 5. Return Response
+    # Filter out sensitive hop-by-hop headers from RS before returning to Angular
+    resp_headers = {
+        k: v
+        for k, v in rp_resp.headers.items()
+        if k.lower()
+        not in [
+            "content-encoding",
+            "transfer-encoding",
+            "content-length",
+        ]
+    }
+
+    return Response(
+        content=rp_resp.content,
+        status_code=rp_resp.status_code,
+        headers=resp_headers,
+    )
+
+@app.post("/presign", response_model=PresignedUrlResponse)
+async def get_upload_link(
+    data: PresignedUrlRequestBFF, 
+    token: Annotated[str, Depends(get_rs_token)]
+):
+    """BFF Endpoint: Validate filename and request upload link from RS."""
+    # We explicitly point to the RS /presign route
+    target_url = f"{RS_URL}/api/presign"
+    
+    return await forward_to_rs(
+        method="POST",
+        url=target_url,
+        token=token,
+        content=data.model_dump_json(by_alias=True).encode()
+    )
+
+@app.get("/files/{key:path}")
+async def get_file_link(
+    key: str, 
+    token: Annotated[str, Depends(get_rs_token)]
+):
+    """BFF Endpoint: Request a download link for a specific key."""
+    target_url = f"{RS_URL}/files/{key}"
+    
+    return await forward_to_rs(
+        method="GET",
+        url=target_url,
+        token=token
+    )
