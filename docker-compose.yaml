@@ -1,0 +1,193 @@
+services:
+  # --- INFRASTRUCTURE: IDENTITY & SESSION ---
+  postgres-keycloak:
+    image: postgres:17-alpine
+    container_name: postgres-keycloak
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_kc_password
+    volumes:
+      - ./persistent_data/postgres-keycloak:/var/lib/postgresql/data
+    secrets:
+      - db_kc_password
+    networks:
+      - backend-net
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.0
+    container_name: keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD_FILE: /run/secrets/db_kc_password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD_FILE: /run/secrets/kc_admin_password
+    depends_on:
+      - postgres-keycloak
+    volumes:
+      - ./secrets/keycloak-realm.json:/opt/keycloak/data/import/realm.json
+    secrets:
+      - db_kc_password
+      - kc_admin_password
+    networks:
+      - backend-net
+
+  redis-session:
+    image: redis:7.4-alpine
+    container_name: redis-session
+    networks:
+      - backend-net
+
+  # --- INFRASTRUCTURE: MESSAGING & CDC ---
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092" # Plaintext
+    environment:
+      # Fixes the error in your logs:
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 # Additional stability for single-node setups:
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      # --- KRaft Mode Setup ---
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9094
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+
+      # --- Listeners ---
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9094
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,SSL:SSL,CONTROLLER:PLAINTEXT
+      # KRaft Required
+      - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - ./persistent_data/kafka:/var/lib/kafka/data
+      - ./secrets/kafka:/etc/kafka/secrets
+    networks:
+      - backend-net
+
+  debezium:
+    image: debezium/connect:2.7
+    container_name: debezium-connector
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=my_connect_configs
+      - OFFSET_STORAGE_TOPIC=my_connect_offsets
+      - STATUS_STORAGE_TOPIC=my_connect_statuses
+    depends_on:
+      - kafka
+      - postgres-keycloak
+    networks:
+      - backend-net
+
+  # --- INFRASTRUCTURE: STORAGE & MAIL ---
+  rustfs:
+    image: rustfs/s3-api:latest # Placeholder for RustFS image
+    container_name: rustfs-s3
+    volumes:
+      - ./persistent_data/rustfs:/data
+    networks:
+      - backend-net
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    ports:
+      - "8025:8025" # Dashboard
+    networks:
+      - backend-net
+
+  # --- APPLICATION SERVICES ---
+  postgres-asset-metadata:
+    image: postgres:17-alpine
+    container_name: postgres-asset-metadata
+    environment:
+      POSTGRES_DB: asset_metadata
+      POSTGRES_USER: asset_admin
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_asset_password
+    volumes:
+      - ./persistent_data/postgres-image-metadata:/var/lib/postgresql/data
+      - ./init-db/postgres-image-metadata:/docker-entrypoint-initdb.d
+    secrets:
+      - db_asset_password
+    networks:
+      - backend-net
+
+  asset-service:
+    build:
+      context: .
+      dockerfile: docker/asset-service.Dockerfile
+    container_name: asset-service
+    depends_on:
+      - postgres-asset-metadata
+      - kafka
+    networks:
+      - backend-net
+
+  bff-token-handler:
+    build:
+      context: .
+      dockerfile: docker/bff.Dockerfile
+    container_name: bff-proxy
+    depends_on:
+      - redis-session
+      - keycloak
+    networks:
+      - backend-net
+
+  # --- WORKERS ---
+  image-processor:
+    build:
+      context: .
+      dockerfile: docker/workers.Dockerfile
+      target: processor
+    depends_on:
+      - kafka
+      - rustfs
+    networks:
+      - backend-net
+
+  notification-worker:
+    build:
+      context: .
+      dockerfile: docker/workers.Dockerfile
+      target: notification
+    depends_on:
+      - kafka
+      - mailpit
+    networks:
+      - backend-net
+
+  # --- FRONTEND & EDGE ---
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: nginx-gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./services/frontend/dist:/usr/share/nginx/html
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./secrets/certs:/etc/nginx/ssl
+    depends_on:
+      - bff-token-handler
+    networks:
+      - backend-net
+
+networks:
+  backend-net:
+    driver: bridge
+
+secrets:
+  db_kc_password:
+    file: ./secrets/db_kc_password.txt
+  kc_admin_password:
+    file: ./secrets/kc_admin_password.txt
+  db_asset_password:
+    file: ./secrets/db_asset_password.txt

@@ -1,14 +1,123 @@
-This is a sophisticated, high-security architecture. By combining the **Token Handler Pattern (BFF)** with **DPoP** (), you are creating a "Sender-Constrained" security model where even a stolen token is useless without the specific private key held by the BFF.
+Considering information above, provide me with Use Cases, detailed planing and explanation of the following platform. Platform's name is "Image platform".
+Image platform consists of the next services: Frontend Angular v21 Bun Nginx Reverse Proxy, BFF (Backend for Frontend) BFF Security Pattern proxy service (FastAPI on Python 3.14.2, python-keycloak and granian HTTP server), KeyCloak STS/IdP, AssetService (FastAPI on python 3.14.2, python-keycloak and granian HTTP server), Notification Worker, Image processing worker, Cleanup worker, RustFS S3 (S3 compatible API), Kafka Broker, Mailpit SMTP service, Postgres for AssetService, Postgres for KeyCloak STS/IdP, Debezium (events for shadow user creation in AssetService after user registration in KeyCloak), Redis for session storage (session ID -> session data).
+Consider following structure of project's root folder:
+- docker contains Dockerfile files and appropriate Dockerfile.dockerignore files.
+- init-db contains SQL scripts for db initialization: postgres-image-metadata (related to AssetService).
+- persistent_data (must be in .gitignore) contains data of the following:
+	- Postgres container postgres-image-metadata and postgres-keycloak (related to KeyCloak).
+	- kafka (Kafka broker)
+	- rustfs
+- secrets contains sersitive initial data for infrastructure (for example certificates and keys). It must be in .gitignore.
+- services contains subfolders with appropriate services and workers: frontend, bff-token-handler, AssetService, image-processor, email-notification-service, shared-core.
+Note: shared-core contains shared logic for python services (for example Pydantic models, types etc.)
+Every python based service must contain also test folder besides of src. All tests must be written in pytest.
+Keep in mind following draft.
+1. Use Cases
+The platform serves two primary personas: the End User (uploading and managing projects) and the System (automating background processing).
 
-The **Project as an Aggregate** ensures that the API Gateway maintains strict consistency between image metadata, target resolutions (, etc.), and the underlying  storage keys in RustFS.
+UC1: Secure Batch Upload
+Actor: Registered User
+Goal: Create a project and upload multiple high-resolution images.
+Flow: The User authenticates via the BFF. The Angular frontend requests a pre-signed URL from the AssetService (via the BFF). The browser uploads raw images directly to RustFS S3.
+UC2: Automated AVIF Conversion
+Actor: Image Processing Worker
+Goal: Convert all project images to .avif for optimal web delivery.
+Flow: Once a batch upload is recorded in Postgres, a PROJECT_READY event is published to Kafka. The Worker picks up the task, performs the CPU-heavy conversion, and saves the result back to S3.
+UC3: Lifecycle Notification
+Actor: Notification Worker
+Goal: Inform the user when their project is ready.
+Flow: After the last image in a batch is converted, the Notification Worker triggers an email via Mailpit SMTP, providing a link to the project gallery.
 
----
+2. Detailed Architecture Planning
+Security: The BFF Token Handler Pattern
+By using the BFF Security Pattern, your Angular v21 app never sees an OAuth access token.
 
-### System Architecture Diagram
+KeyCloak handles the identity logic.
+BFF acts as a confidential client. It exchanges the authorization code for tokens (session ID) and stores them in a server-side session.
+The browser only receives a Secure, HttpOnly, SameSite cookie representing the session ID. This prevents malicious scripts from exfiltrating tokens.
+Data Pipeline: Kafka & Workers
+Kafka Broker: Acts as the central nervous system. It decouples the ingestion (upload) from the heavy processing (conversion).
+RustFS S3: A high-performance, S3-compatible storage layer written in Rust. It stores the "Source" (raw) and "Destination" (AVIF) files.
+Cleanup Worker: Periodically prunes the PostgreSQL and RustFS storage, removing raw source files after conversion or deleting expired projects to keep costs low.
 
-This diagram illustrates the flow from the Angular/Bun frontend through the secure perimeter to the event-driven processing pipeline.
+3. Authentication & Identity Flow
+The system uses KeyCloak as the source of truth, but keeps a "Shadow" copy of user data in the main application database for performance and relational integrity.
+Handshake: The User Browser (Angular v21) communicates with the BFF via Nginx. The BFF manages the OAuth2 Code Flow with PKCE.
+DPoP Binding: To prevent token theft, the BFF generates a DPoP (Demonstrating Proof-of-Possession) key pair. Access tokens issued by KeyCloak are bound to the BFF’s public key.
+The "Shadow User" Sync: * When a user is registered in KeyCloak, a message is published to Kafka.
+The AssetService consumes this message and creates a Shadow User in the PostgreSQL: APP database.
+This allows us to link "Projects" and "Images" to a local user_id without calling KeyCloak for every database query.
 
-```mermaid
+4. The Image Processing Pipeline (Asynchronous)
+Because converting images to .avif is CPU-intensive, we use a "Fire and Forget" approach from the user's perspective.
+
+Stage 1: Ingestion
+The BFF streams the uploaded batch to a "landing" bucket in RustFS S3.
+The BFF writes a record to the Postgres DB with status PENDING.
+A message is published to Kafka topic: image.raw.uploaded.
+
+Stage 2: Conversion
+The Image Processing Worker (the "Consumer") picks up the message.
+It downloads the image, converts it to .avif, and uploads the result to the "processed" bucket in RustFS.
+It publishes a message to Kafka topic: image.avif.ready.
+Stage 3: Notification & Cleanup
+The Notification Worker tracks the batch. When the last image in a project is processed, it generates an email.
+The email is sent to Mailpit service (which acts as a mock SMTP for your dev/test environment).
+The Cleanup Worker runs on a schedule to delete the "original" raw files from RustFS once the .avif conversion is confirmed and stored, saving disk space.
+
+4. Database Planning
+You have two distinct Postgres instances to maintain strict data isolation:
+KeyCloak Postgres: Stores users, hashed passwords, client IDs, and OAuth configurations.
+API/Application Postgres:
+projects: id, user_id, status (Created, Processing, Completed).
+batches: id, project_id, image_id 
+images: id, project_id, raw_s3_path, raw_format_name, processed_s3_path, processed_format_name, status, error_log.
+
+5. Summary of Security Benefits
+XSS Protection: Since the access_token is never in the browser's LocalStorage or Memory, malicious scripts cannot steal it.
+CSRF Protection: Using SameSite=Strict cookies and custom request headers (like X-Requested-With) at the BFF level.
+Token Binding (DPoP): Even if the internal network is breached and an Access Token is stolen from Redis, it is useless without the private key held by the BFF.
+Security: The BFF Token Handler Pattern
+By using the BFF Security Pattern, your Angular v21 app never sees an OAuth access token.
+KeyCloak handles the identity logic.
+BFF acts as a confidential client. It exchanges the authorization code for tokens and stores them in a server-side session.
+The browser only receives a Secure, HttpOnly, SameSite cookie representing the session ID. This prevents malicious scripts from exfiltrating tokens.
+
+6. Data Pipeline: Kafka & Workers
+Kafka Broker: Acts as the central nervous system. It decouples the ingestion (upload) from the heavy processing (conversion).
+RustFS S3: A high-performance, S3-compatible storage layer written in Rust. It stores the "Source" (raw) and "Destination" (AVIF) files.
+Cleanup Worker: Periodically prunes the PostgreSQL and RustFS storage, removing raw source files after conversion or deleting expired projects to keep costs low.
+Notification Worker: tracks the notifications in Kafka. When the last image in a project is processed, it generates an email and sends it to the Mailpit.
+
+7. Deployment Strategy
+Identity Layer: Deploy KeyCloak and its Postgres DB first. Configure the realm and the BFF as a confidential client.
+Core Services: Spin up Kafka and RustFS.
+Application Layer: Deploy the BFF and AssetService. The BFF must share the same root domain as the Angular app to allow the secure cookie to work.
+Worker Layer: Scale the Image Processing Worker horizontally depending on the CPU load of the AVIF conversions.
+
+/image-platform
+├── docker/                  # Dockerfiles for all services (Python 3.14.2 base)
+├── init-db/                 # SQL scripts for AssetService schema
+├── persistent_data/         # .gitignore (Postgres, Kafka, Redis, RustFS data)
+├── secrets/                 # .gitignore (Certs, KeyCloak secrets, DPoP keys)
+└── services/
+    ├── shared-core/         # Shared Pydantic models (Message schemas, Error types)
+    │   ├── src/
+    │   └── tests/           # Pytest suite
+    ├── frontend/            # Angular v21 + Bun + Nginx
+    ├── bff-token-handler/   # FastAPI Security Proxy + Redis Client
+    │   ├── src/
+    │   └── tests/           # Pytest suite
+    ├── asset-service/       # Business Logic + Pytest suite
+    │   ├── src/
+    │   └── tests/           # Pytest suite
+    ├── image-processor/     # CPU-intensive Worker + Pytest
+    │   ├── src/
+    │   └── tests/           # Pytest suite
+    └── email-notification/  # Notification Worker + Pytest
+        ├── src/
+        └── tests/           # Pytest suite
+
 graph TD
     subgraph Client_Layer [Client & Edge]
         UA([User Browser])
@@ -28,7 +137,7 @@ graph TD
     end
 
     subgraph Core_Services [Project Aggregate Domain]
-        AGW[API Gateway: FastAPI / Granian]
+        AS[AssetService: FastAPI / Granian]
         DB_APP[(PostgreSQL: Shadow Users, Projects, Metadata)]
         RFS[(RustFS S3: Raw & Processed)]
     end
@@ -47,17 +156,17 @@ graph TD
     Nginx <--> BFF
     BFF <-->|OAuth2 + PKCE + DPoP| KC
     KC -.->|User Registered| KAF
-    KAF -.->|Sync User| AGW
-    AGW -.->|Create Shadow User| DB_APP
+    KAF -.->|Sync User| AS
+    AS -.->|Create Shadow User| DB_APP
 
     %% Project & Image Flow
-    BFF -->|Proxied Req + DPoP| AGW
-    AGW -->|Metadata CRUD & ACLs| DB_APP
-    AGW -->|Signed Upload/Download URLs| RFS
+    BFF -->|Proxied Req + DPoP| AS
+    AS -->|Metadata CRUD & ACLs| DB_APP
+    AS -->|Signed Upload/Download URLs| RFS
     UA -.->|Direct S3 Upload| RFS
     
     %% Processing & Cleanup Flow
-    AGW -->|Batch Created / Item Deleted| KAF
+    AS -->|Batch Created / Item Deleted| KAF
     KAF -->|Process Image| IP
     IP <-->|Read Raw / Write Sizes| RFS
     IP -->|Processing Status| KAF
@@ -66,179 +175,7 @@ graph TD
 
     %% Cleanup Logic
     KAF -->|Cleanup Events| CW
-    CW <-->|Prune Metadata| DB_APP
+    CW -->|Prune Metadata Events| KAF
     CW <-->|Delete Objects| RFS
 
-```
 
----
-
-### Detailed Project Structure
-
-Each service is a self-contained `uv` project with independent environments and `pyproject.toml` files.
-
-#### 1. Root Orchestration
-
-```text
-/platform-root
-├── docker-compose.yaml             # Orchestrates the full stack
-├── .python-version                 # Set to 3.14.2
-├── .env                            # Global config (Kafka seeds, DB credentials)
-├── infra/                          # Infrastructure configs
-│   ├── nginx/default.conf          # Reverse proxy routing
-│   ├── postgres/init/              # SQL scripts for KC and APP databases
-│   └── keycloak/                   # Realm and Client exports
-
-```
-
-#### 2. Frontend (Angular + Bun)
-
-```text
-/frontend
-├── src/                            # Angular v21 Material source
-├── package.json                    # Managed by Bun
-├── bun.lockb                       # Bun lockfile
-└── angular.json
-
-```
-
-#### 3. BFF Service (The Token Handler)
-
-**Responsibility:** Secure session management, Cookie-to-Token exchange, DPoP proof generation.
-
-```text
-/services/bff-token-handler
-├── pyproject.toml                  # uv project (FastAPI, Granian, httpx)
-├── src/
-│   └── bff/
-│       ├── entrypoints/            # FastAPI routes
-│       ├── security/               # OIDC, PKCE logic, DPoP Signer
-│       ├── session/                # Encrypted HTTP-only cookie logic
-│       └── config.py               # Pydantic Settings v2
-└── tests/                          # Pytest (Auth flow simulation)
-
-```
-
-#### 4. API Gateway (The Aggregate Root)
-
-**Responsibility:** Project/Image CRUD, ACL management, Shadow User sync, S3 URL signing.
-
-```text
-/services/api-gateway
-├── pyproject.toml                  # uv project (FastAPI, Granian, SQLAlchemy/SQLModel)
-├── src/
-│   └── gateway/
-│       ├── domain/                 # Project Aggregate (Project, Batch, Image entities)
-│       ├── api/                    # Image CRUD & Read Access (ACL) endpoints
-│       ├── repositories/           # Postgres adapters (Shadow Users, Project Metadata)
-│       ├── services/               # RustFS S3 Presigner & Kafka producers
-│       └── config.py               # Pydantic Settings v2
-└── tests/
-    └── pytest/                     # Unit tests for Aggregate logic & ACLs
-
-```
-
-#### 5. Image Processor (The Worker)
-
-**Responsibility:** Batch processing, resolution scaling (, , ), AVIF conversion.
-
-```text
-/services/image-processor
-├── pyproject.toml                  # uv project (Pillow, pillow-heif, aiokafka)
-├── src/
-│   └── processor/
-│       ├── engine/                 # Image scaling & conversion logic
-│       ├── kafka/                  # Consumer for 'batch.created' topic
-│       └── config.py
-└── tests/
-    └── pytest/                     # Image quality and resolution tests
-
-```
-
-#### 6. Notification Service
-
-**Responsibility:** Aggregating processing results into a final report.
-
-```text
-/services/notification-service
-├── pyproject.toml                  # uv project (aiokafka, aiosmtplib)
-├── src/
-│   └── notifications/
-│       ├── reports/                # Logic to format success/failure email
-│       ├── mailer/                 # Mailpit SMTP integration
-│       └── config.py
-└── tests/
-    └── pytest/                     # Email template rendering tests
-
-```
-
-#### 7. Shared Library
-
-```text
-/libs/shared-core
-├── pyproject.toml                  # Shared uv lib
-└── src/shared_core/
-    ├── models/                     # Shared Pydantic schemas (uuid7 logic)
-    └── events/                     # Kafka event schemas (Registration, Batch)
-
-```
-
-### 8. Cleanup Worker (The Scrubber)
-
-```text
-/services/cleanup-worker
-├── pyproject.toml                  # uv project (aiokafka, aiobotocore, sqlmodel)
-├── src/
-│   └── cleanup/
-│       ├── handlers/               # Logic for 'project.deleted' or 'file.expired'
-│       ├── scheduler/              # Cron logic for orphan scrubbing (S3 vs DB)
-│       ├── storage/                # RustFS/S3 deletion client
-│       └── config.py
-└── tests/
-    └── pytest/                     # Integration tests for recursive deletion
-```
----
-
-### Key Component Explanations
-
-#### The Project Aggregate Root
-
-The `api-gateway` treats the **Project** as the boundary.
-
-* **Shadow Users:** When KeyCloak fires a `user_registered` event to Kafka, the Gateway creates a record in its own Postgres. All projects are linked to this local  user.
-* **Physical vs. Metadata:** RustFS stores files as `{image_uuid7}.avif`. The Gateway's database maps this to the user's "Display Name". Renaming an image only updates the database metadata, ensuring  renaming performance without moving S3 objects.
-* **CRUD & Access:** The Gateway provides endpoints for creating projects, adding batches, and a `ProjectAccess` table to manage read-only permissions for other shadow users.
-
-#### High-Security Auth ( + )
-
-* **Authorization Code + PKCE:** Performed by the BFF to prevent code interception.
-* **DPoP:** The BFF includes a  header in every request to the API Gateway. This header contains a JWT signed by the BFF, proving that the bearer of the token is the legitimate  client.
-
-#### Processing & Resolutions
-
-The `image-processor` consumes the batch task and produces three specific outputs:
-
-1. **Normal:** Full size AVIF.
-2. **Preview:** Downscaled to  (if original is larger).
-3. **Thumbnail:** Small, high-compression variant.
-Each is uploaded to a resolution-specific path in the `processed` bucket.
-
-#### Storage Hygiene & Deletion Flow
-The API Gateway no longer performs heavy I/O deletions. Instead:
-
-Soft Delete: When a user deletes a project, the Gateway marks the record as deleted in PostgreSQL.
-
-Event Trigger: The Gateway emits a PROJECT_PURGE_REQUESTED event to Kafka.
-
-Async Cleanup: The Cleanup Worker picks up the event, identifies all associated blob keys (Raw, Normal, Preview, Thumbnail), and executes a batch delete against RustFS.
-
-Verification: Once storage is cleared, it performs the final hard-delete or archive update in the database.
-
-#### The "Orphan" Scrubber
-Because users might upload files to S3 via presigned URLs but never finish the "Confirm Upload" step in the API, the Cleanup Worker runs a daily task:
-
-It lists objects in the uploads/tmp/ prefix of RustFS.
-
-Any file older than 24 hours without a corresponding "Ready" flag in DB_APP is automatically purged.
-
-**Would you like me to generate the `pyproject.toml` and Pydantic Settings models for the API Gateway and BFF services next?**
