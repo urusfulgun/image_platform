@@ -16,8 +16,11 @@ FROM nginx:stable-alpine
 # Note: Angular v21 builds to 'dist/[project-name]/browser'
 COPY --from=build services/frontend/dist/frontend/browser /usr/share/nginx/html
 
-# Copy your custom nginx.conf we created earlier
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Remove the default config
+RUN rm /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+# Copy our reverse-proxy configuration
+COPY config/nginx-proxy/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80 443
 CMD ["nginx", "-g", "daemon off;"]

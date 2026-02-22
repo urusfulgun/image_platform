@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from asset-service!")
+"""AssetService package."""

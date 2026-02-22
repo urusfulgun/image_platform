@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from bff-token-handler!")
+"""BFF Token Handler — package exports."""

@@ -13,25 +13,32 @@ services:
       - db_kc_password
     networks:
       - backend-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0.0
+    image: quay.io/keycloak/keycloak:26.5.4
     container_name: keycloak
     command: start-dev --import-realm
     environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD_FILE: /run/secrets/db_kc_password
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD_FILE: /run/secrets/kc_admin_password
-    depends_on:
-      - postgres-keycloak
+      - KC_HOSTNAME_URL=http://keycloak:8080
+      - KC_HOSTNAME_STRICT=false
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres-keycloak/keycloak
+      - KC_DB_USERNAME=keycloak
+      - KC_DB_PASSWORD=dev-password
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
     volumes:
-      - ./secrets/keycloak-realm.json:/opt/keycloak/data/import/realm.json
-    secrets:
-      - db_kc_password
-      - kc_admin_password
+    - ./secrets/keycloak/keycloak-realm.json:/opt/keycloak/data/import/realm.json
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-keycloak:
+        condition: service_healthy
     networks:
       - backend-net
 
@@ -46,25 +53,21 @@ services:
     image: confluentinc/cp-kafka:latest
     container_name: kafka
     ports:
-      - "9092:9092" # Plaintext
+      - "9092:9092"
     environment:
-      # Fixes the error in your logs:
-      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 # Additional stability for single-node setups:
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-      # --- KRaft Mode Setup ---
       - KAFKA_NODE_ID=1
       - KAFKA_PROCESS_ROLES=broker,controller
       - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9094
       - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
       - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-
-      # --- Listeners ---
       - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9094
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,SSL:SSL,CONTROLLER:PLAINTEXT
-      # KRaft Required
       - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
     volumes:
       - ./persistent_data/kafka:/var/lib/kafka/data
       - ./secrets/kafka:/etc/kafka/secrets
@@ -88,8 +91,11 @@ services:
 
   # --- INFRASTRUCTURE: STORAGE & MAIL ---
   rustfs:
-    image: rustfs/s3-api:latest # Placeholder for RustFS image
+    image: rustfs/rustfs:latest
     container_name: rustfs-s3
+    environment:
+      - RUSTFS_ROOT_USER=rustfsadmin
+      - RUSTFS_ROOT_PASSWORD=rustfspassword
     volumes:
       - ./persistent_data/rustfs:/data
     networks:
@@ -100,6 +106,7 @@ services:
     container_name: mailpit
     ports:
       - "8025:8025" # Dashboard
+      - "1025:1025" # SMTP
     networks:
       - backend-net
 
@@ -124,20 +131,43 @@ services:
       context: .
       dockerfile: docker/asset-service.Dockerfile
     container_name: asset-service
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://asset_admin:${DB_ASSET_PASSWORD}@postgres-asset-metadata:5432/asset_metadata
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - S3_ENDPOINT_URL=http://rustfs-s3:9000
+      - S3_ACCESS_KEY=rustfsadmin
+      - S3_SECRET_KEY=rustfspassword
+      - RAW_BUCKET=raw-images
+      - PROCESSED_BUCKET=processed-images
+      - KEYCLOAK_URL=http://keycloak:8080
+      - REALM=image-platform
     depends_on:
       - postgres-asset-metadata
       - kafka
+      - rustfs
     networks:
       - backend-net
 
   bff-token-handler:
     build:
       context: .
-      dockerfile: docker/bff.Dockerfile
-    container_name: bff-proxy
+      dockerfile: docker/bff-token-handler.Dockerfile
+    container_name: bff-token-handler
+    environment:
+      - KEYCLOAK_URL=http://keycloak:8080
+      - REALM=image-platform
+      - CLIENT_ID=bff-client
+      - CLIENT_SECRET_FILE=/run/secrets/bff_client_secret
+      - REDIRECT_URI=http://localhost/api/callback
+      - REDIS_URL=redis://redis-session:6379/0
+      - ASSET_SERVICE_URL=http://asset-service:8000
+      - SESSION_COOKIE_NAME=sid
+      - SESSION_TTL_SECONDS=3600
     depends_on:
       - redis-session
       - keycloak
+    secrets:
+      - bff_client_secret
     networks:
       - backend-net
 
@@ -147,6 +177,16 @@ services:
       context: .
       dockerfile: docker/workers.Dockerfile
       target: processor
+    container_name: image-processor
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - INPUT_TOPIC=image.raw.uploaded
+      - OUTPUT_TOPIC=image.avif.ready
+      - S3_ENDPOINT_URL=http://rustfs-s3:9000
+      - S3_ACCESS_KEY=rustfsadmin
+      - S3_SECRET_KEY=rustfspassword
+      - RAW_BUCKET=raw-images
+      - PROCESSED_BUCKET=processed-images
     depends_on:
       - kafka
       - rustfs
@@ -158,6 +198,14 @@ services:
       context: .
       dockerfile: docker/workers.Dockerfile
       target: notification
+    container_name: notification-worker
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - TOPIC=image.avif.ready
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - FROM_EMAIL=noreply@image-platform.local
+      - FRONTEND_BASE_URL=http://localhost
     depends_on:
       - kafka
       - mailpit
@@ -166,20 +214,15 @@ services:
 
   # --- FRONTEND & EDGE ---
   nginx-proxy:
-    image: nginx:alpine
-    container_name: nginx-gateway
     build:
       context: .
       dockerfile: docker/nginx-proxy.Dockerfile
+    container_name: nginx-gateway
     ports:
       - "80:80"
-      - "443:443"
-    volumes:
-      - ./services/frontend/dist:/usr/share/nginx/html
-      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./secrets/certs:/etc/nginx/ssl
     depends_on:
       - bff-token-handler
+      - asset-service
     networks:
       - backend-net
 
@@ -189,8 +232,10 @@ networks:
 
 secrets:
   db_kc_password:
-    file: ./secrets/db_kc_password.txt
+    file: ./secrets/keycloak/db_kc_password.txt
   kc_admin_password:
-    file: ./secrets/kc_admin_password.txt
+    file: ./secrets/keycloak/kc_admin_password.txt
   db_asset_password:
-    file: ./secrets/db_asset_password.txt
+    file: ./secrets/postgres-asset-metadata/db_asset_password.txt
+  bff_client_secret:
+    file: ./secrets/bff/bff_client_secret.txt

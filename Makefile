@@ -1,6 +1,6 @@
 # Variables
 COMPOSE_CMD := docker compose
-SERVICES := postgres-keycloak keycloak bff-token-handler rustfs asset-service redis-session image-processor notification-worker nginx-proxy mailpit
+SERVICES := postgres-keycloak postgres-asset-metadata keycloak bff-token-handler rustfs asset-service redis-session image-processor notification-worker nginx-proxy mailpit
 
 .PHONY: up down restart status logs clean help
 
