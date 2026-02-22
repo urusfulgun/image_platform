@@ -168,6 +168,9 @@ services:
   nginx-proxy:
     image: nginx:alpine
     container_name: nginx-gateway
+    build:
+      context: .
+      dockerfile: docker/nginx-proxy.Dockerfile
     ports:
       - "80:80"
       - "443:443"

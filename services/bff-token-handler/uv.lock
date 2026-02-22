@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = ">=3.14.2"
+
+[[package]]
+name = "bff-token-handler"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "shared-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "shared-core", editable = "../shared-core" }]
+
+[[package]]
+name = "shared-core"
+version = "0.1.0"
+source = { editable = "../shared-core" }
