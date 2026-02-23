@@ -7,6 +7,7 @@ Routes:
   GET  /me           → Return user info from current session
   ANY  /proxy/{path} → Authenticated reverse proxy to AssetService
 """
+
 import secrets
 from contextlib import asynccontextmanager
 
@@ -23,7 +24,14 @@ from bff_token_handler.auth.oauth import (
 )
 from bff_token_handler.proxy.reverse_proxy import proxy_request
 from keycloak import KeycloakOpenID, pkce_utils
-from bff_token_handler.session.redis_store import session_store
+from bff_token_handler.session.redis_store import (
+    SessionStore,
+    CodeVerifierStore,
+    RedisSession,
+    get_session_store,
+    get_code_verifier_store,
+    get_redis_session,
+)
 from bff_token_handler.settings import settings
 
 # --- Temporary in-memory store for PKCE state/verifier (per-request) ---
@@ -33,9 +41,18 @@ _pkce_cache: dict[str, str] = {}  # state -> code_verifier
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await session_store.connect()
+    redis_session = await get_redis_session()
+    app.state.redis_session = redis_session
+    await redis_session.connect()
+
+    session_store = await get_session_store(redis_client=redis_session.redis)
+    app.state.sesson_store = session_store
+
+    verifier_store = await get_code_verifier_store(redis_client=redis_session.redis)
+    app.state.verifier_store = verifier_store
+
     yield
-    await session_store.disconnect()
+    await redis_session.disconnect()
 
 
 # Define specifically allowed origins
@@ -67,21 +84,29 @@ app.add_middleware(
 # Auth routes
 # ---------------------------------------------------------------------------
 
-@app.get("/login", summary="Initiate OAuth2 PKCE login flow")
-async def login():
-    """Redirect the browser to the KeyCloak authorization endpoint."""
-    state = secrets.token_urlsafe(16)
-    code_verifier, code_challenge = generate_pkce_pair()
-    _pkce_cache[state] = code_verifier  # store verifier keyed by state
 
-    auth_url = build_auth_url(state=state, code_challenge=code_challenge)
+@app.get("/login", summary="Initiate OAuth2 PKCE login flow")
+async def login(request: Request):
+    """Redirect the browser to the KeyCloak authorization endpoint."""
+    code_verifier_store: CodeVerifierStore = request.app.state.verifier_store
+    state = secrets.token_urlsafe(16)
+    code_verifier, code_challenge, code_challenge_method = generate_pkce_pair()
+    # store verifier keyed by state
+    code_verifier_store.create_pkce(state, 300, code_verifier)
+    auth_url = build_auth_url(
+        state=state,
+        code_challenge=code_challenge,
+        code_challenge_method=code_challenge_method,
+    )
     return RedirectResponse(auth_url)
 
 
 @app.get("/callback", summary="Handle OAuth2 authorization code callback")
 async def callback(request: Request, code: str, state: str):
     """Exchange the authorization code for tokens and establish a session."""
-    code_verifier = _pkce_cache.pop(state, None)
+    session_store: SessionStore = request.app.state.session_store
+    code_verifier_store: CodeVerifierStore = request.app.state.verifier_store
+    code_verifier: str = await code_verifier_store.get_pkce(state=state)
     if not code_verifier:
         return JSONResponse({"detail": "Invalid or expired state"}, status_code=400)
 
@@ -105,6 +130,7 @@ async def callback(request: Request, code: str, state: str):
 async def logout(request: Request):
     """Delete the server-side session and clear the browser cookie."""
     session_id = request.cookies.get(settings.session_cookie_name)
+    session_store: SessionStore = request.app.state.session_store
     if session_id:
         await session_store.delete(session_id)
 
@@ -117,6 +143,7 @@ async def logout(request: Request):
 async def me(request: Request):
     """Return the authenticated user's identity claims."""
     session_id = request.cookies.get(settings.session_cookie_name)
+    session_store: SessionStore = request.app.state.session_store
     if not session_id:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
 
@@ -131,6 +158,7 @@ async def me(request: Request):
 # ---------------------------------------------------------------------------
 # Proxy catch-all — forward /proxy/* to AssetService
 # ---------------------------------------------------------------------------
+
 
 @app.api_route(
     "/proxy/{path:path}",

@@ -9,7 +9,7 @@ import httpx
 from fastapi import Request, Response
 
 from bff_token_handler.auth.dpop import create_dpop_proof
-from bff_token_handler.session.redis_store import session_store
+from bff_token_handler.session.redis_store import SessionStore
 from bff_token_handler.settings import settings
 
 
@@ -23,6 +23,7 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
     Returns:
         FastAPI Response mirroring the upstream reply.
     """
+    session_store: SessionStore = request.app.state.session_store
     # --- Resolve session ---
     session_id: Optional[str] = request.cookies.get(settings.session_cookie_name)
     if not session_id:
@@ -40,7 +41,7 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
         upstream_url = f"{upstream_url}?{request.url.query}"
 
     # --- Fresh DPoP proof for the upstream call ---
-    dpop_proof = create_dpop_proof(request.method, upstream_url)
+    dpop_proof = create_dpop_proof(request.method, upstream_url, key_pair)
 
     # --- Forward headers (strip hop-by-hop) ---
     HOP_BY_HOP = {"host", "connection", "transfer-encoding", "upgrade",

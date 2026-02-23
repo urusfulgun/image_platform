@@ -7,7 +7,7 @@ from bff_token_handler.auth.oauth import generate_pkce_pair, build_auth_url
 
 
 def test_pkce_pair_challenge_matches_verifier():
-    verifier, challenge = generate_pkce_pair()
+    verifier, challenge, challenge_method = generate_pkce_pair()
 
     # Manually compute expected challenge
     digest = hashlib.sha256(verifier.encode()).digest()
@@ -16,7 +16,7 @@ def test_pkce_pair_challenge_matches_verifier():
 
 
 def test_pkce_verifier_is_url_safe():
-    verifier, _ = generate_pkce_pair()
+    verifier, _, _ = generate_pkce_pair()
     assert all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
                for c in verifier)
 
@@ -31,6 +31,6 @@ def test_build_auth_url_contains_required_params():
 
 
 def test_pkce_pairs_are_unique():
-    _, c1 = generate_pkce_pair()
-    _, c2 = generate_pkce_pair()
+    _, c1, _ = generate_pkce_pair()
+    _, c2, _ = generate_pkce_pair()
     assert c1 != c2

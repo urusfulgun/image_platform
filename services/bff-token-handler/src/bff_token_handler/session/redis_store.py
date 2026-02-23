@@ -3,9 +3,12 @@
 Stores serialized TokenSet by session ID so the browser
 never receives or sees an access token.
 """
+
+from abc import ABC, abstractmethod
 import json
 import secrets
-from typing import Optional
+from string.templatelib import Template, Interpolation
+
 
 import redis.asyncio as aioredis
 
@@ -13,11 +16,32 @@ from bff_token_handler.auth.oauth import TokenSet
 from bff_token_handler.settings import settings
 
 
-class SessionStore:
-    """Async Redis session store."""
+async def redis_key_tag(it: Template) -> str:
+    """Processes the T-string specifically for Redis."""
+    result = []
+    # Template.args is an iterable of str | Interpolation
+    for part in it.args:
+        if isinstance(part, str):
+            result.append(part)
+        elif isinstance(part, Interpolation):
+            # We can force the value to be a string or validate it
+            val = str(part.value)
+            if ":" in val:
+                raise ValueError("Key subparts for Redis cannot contain colons!")
+            result.append(val)
+    return "".join(result)
 
-    def __init__(self) -> None:
-        self._redis: Optional[aioredis.Redis] = None
+
+class RedisSession:
+    _redis: aioredis.Redis
+
+    @property
+    def redis(self) -> aioredis.Redis:
+        return self._redis
+
+    @redis.setter
+    def redis(self, redis_client: aioredis.Redis) -> None:
+        self._redis = redis_client
 
     async def connect(self) -> None:
         self._redis = aioredis.from_url(
@@ -30,8 +54,25 @@ class SessionStore:
         if self._redis:
             await self._redis.aclose()
 
-    def _key(self, session_id: str) -> str:
-        return f"session:{session_id}"
+
+class AbstractRedisStore(ABC):
+    _redis: aioredis.Redis
+
+    def __init__(self, redis: aioredis.Redis) -> None:
+        super().__init__()
+        self._redis = redis
+
+    @abstractmethod
+    def _key(self, key: str) -> str:
+        raise NotImplementedError
+
+
+class SessionStore(AbstractRedisStore):
+    """Async Redis session store."""
+
+    def _key(self, key: str) -> str:
+        """Creates session ID key `session:session_id` for Redis to find a value with it"""
+        return redis_key_tag(t"session:{key}")
 
     async def create(self, token_set: TokenSet) -> str:
         """Persist a TokenSet and return a new, random session ID."""
@@ -50,7 +91,7 @@ class SessionStore:
         )
         return session_id
 
-    async def get(self, session_id: str) -> Optional[TokenSet]:
+    async def get(self, session_id: str) -> TokenSet | None:
         """Retrieve a TokenSet by session ID. Returns None if not found."""
         raw = await self._redis.get(self._key(session_id))
         if raw is None:
@@ -69,5 +110,39 @@ class SessionStore:
         await self._redis.delete(self._key(session_id))
 
 
+class CodeVerifierStore:
+    """Async Redis PKCE code verifier store."""
+
+    _redis: aioredis.Redis
+
+    def __init__(self, redis: aioredis.Redis):
+        self._redis = redis
+
+    async def _key(self, key: str) -> str:
+        """Creates PKCE state as key `pkce:state` for Redis to find a value with it"""
+        return await redis_key_tag(t"pkce:{key}")
+
+    async def get_pkce(self, state: str) -> str | None:
+        return self._redis.get(await self._key(state))
+
+    async def create_pkce(self, state: str, ttl: int, code_verifier: str):
+        await self._redis.setex(await self._key(state), ttl, code_verifier)
+
+    async def delete_pkce(self, state: str):
+        await self._redis.delete(await self._key(state))
+
+
 # Module-level singleton — shared via FastAPI state
-session_store = SessionStore()
+
+
+async def get_session_store(redis_client: aioredis.Redis) -> SessionStore:
+    return SessionStore(redis_client)
+
+
+async def get_code_verifier_store(redis_client: aioredis.Redis) -> CodeVerifierStore:
+    return CodeVerifierStore(redis_client)
+
+
+async def get_redis_session() -> RedisSession:
+    redis_session = RedisSession()
+    return redis_session

@@ -1,4 +1,5 @@
 """OAuth2 Authorization Code + PKCE flow helpers."""
+
 import base64
 import hashlib
 import os
@@ -6,11 +7,24 @@ import secrets
 from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlencode
+from pydantic import BaseModel, HttpUrl
 
 import httpx
 
 from bff_token_handler.settings import settings
-from bff_token_handler.auth.dpop import create_dpop_proof
+from bff_token_handler.auth.dpop import create_dpop_proof, KeyPair
+from keycloak import KeycloakOpenID, pkce_utils, keycloak_uma
+
+
+class KeyCloakOpenIDConfig(BaseModel):
+    server_url: HttpUrl
+    client_id: str
+    realm_name: str
+    client_secret_key: str
+
+
+async def get_keycloak_openid(keycloak_config: KeyCloakOpenIDConfig) -> KeycloakOpenID:
+    return KeycloakOpenID(**keycloak_config.model_dump(mode="json"))
 
 
 def _b64url(data: bytes) -> str:
@@ -23,33 +37,37 @@ def generate_pkce_pair() -> tuple[str, str]:
     Returns:
         (code_verifier, code_challenge) both as strings.
     """
-    code_verifier = _b64url(secrets.token_bytes(32))
-    digest = hashlib.sha256(code_verifier.encode()).digest()
-    code_challenge = _b64url(digest)
-    return code_verifier, code_challenge
-
-
-def build_auth_url(state: str, code_challenge: str) -> str:
-    """Build the KeyCloak Authorization URL for PKCE flow."""
-    base = (
-        f"{settings.keycloak_url}/realms/{settings.realm}"
-        "/protocol/openid-connect/auth"
+    code_challenge_method = settings.pkce_code_challenge_method
+    code_verifier = pkce_utils.generate_code_verifier()
+    code_challenge, _ = pkce_utils.generate_code_challenge(
+        code_verifier, method=code_challenge_method
     )
-    params = {
-        "client_id": settings.client_id,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "redirect_uri": settings.redirect_uri,
-        "state": state,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
-    }
-    return f"{base}?{urlencode(params)}"
+    return code_verifier, code_challenge, code_challenge_method
+
+
+def build_auth_url(
+    keycloak_openid: KeycloakOpenID,
+    state: str,
+    code_challenge: str,
+    code_challenge_method: str,
+) -> str:
+    """Build the KeyCloak Authorization URL for PKCE flow."""
+
+    auth_url = keycloak_openid.auth_url(
+        redirect_uri=settings.redirect_uri,
+        scope="openid",
+        state=state,
+        code_challenge=code_challenge,
+        code_challenge_method=code_challenge_method,
+    )
+
+    return auth_url
 
 
 @dataclass
 class TokenSet:
     """Container for token introspection result."""
+
     access_token: str
     refresh_token: Optional[str]
     id_token: Optional[str]
@@ -57,7 +75,7 @@ class TokenSet:
     token_type: str = "Bearer"
 
 
-async def exchange_code(code: str, code_verifier: str) -> TokenSet:
+async def exchange_code(code: str, code_verifier: str, key_pair: KeyPair) -> TokenSet:
     """Exchange an authorization code for tokens using PKCE + DPoP.
 
     Args:
@@ -67,11 +85,8 @@ async def exchange_code(code: str, code_verifier: str) -> TokenSet:
     Returns:
         TokenSet with access/refresh/id tokens.
     """
-    token_endpoint = (
-        f"{settings.keycloak_url}/realms/{settings.realm}"
-        "/protocol/openid-connect/token"
-    )
-    dpop_proof = create_dpop_proof("POST", token_endpoint)
+    token_endpoint = settings.token_url
+    dpop_proof = create_dpop_proof("POST", token_endpoint, key_pair)
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
