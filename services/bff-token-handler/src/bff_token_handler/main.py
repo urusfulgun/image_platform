@@ -8,18 +8,20 @@ Routes:
   ANY  /proxy/{path} → Authenticated reverse proxy to AssetService
 """
 
+import logging
 import secrets
 from contextlib import asynccontextmanager
 
+from bff_token_handler.auth.dpop import generate_ec_key_pair
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from bff_token_handler.auth.oauth import (
-    TokenSet,
     build_auth_url,
     exchange_code,
     generate_pkce_pair,
+    get_keycloak_openid,
     introspect_token,
 )
 from bff_token_handler.proxy.reverse_proxy import proxy_request
@@ -32,11 +34,16 @@ from bff_token_handler.session.redis_store import (
     get_code_verifier_store,
     get_redis_session,
 )
-from bff_token_handler.settings import settings
+from bff_token_handler.settings import settings, keycloak_config
+from shared_core.dto.key_pair import KeyPair
+from shared_core.schemas.security.token_set import TokenSet
 
 # --- Temporary in-memory store for PKCE state/verifier (per-request) ---
 # In production use Redis with short TTL; fine for demo.
 _pkce_cache: dict[str, str] = {}  # state -> code_verifier
+
+log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
@@ -46,10 +53,14 @@ async def lifespan(app: FastAPI):
     await redis_session.connect()
 
     session_store = await get_session_store(redis_client=redis_session.redis)
-    app.state.sesson_store = session_store
+    app.state.session_store = session_store
+
+    app.state.ec_key_pair = generate_ec_key_pair()
 
     verifier_store = await get_code_verifier_store(redis_client=redis_session.redis)
     app.state.verifier_store = verifier_store
+    keycloak_openid = await get_keycloak_openid(keycloak_config=keycloak_config)
+    app.state.keycloak_openid = keycloak_openid
 
     yield
     await redis_session.disconnect()
@@ -57,8 +68,8 @@ async def lifespan(app: FastAPI):
 
 # Define specifically allowed origins
 origins = [
-    "http://localhost:4200",  # Angular Default
-    "http://127.0.0.1:4200",
+    "http://localhost:80",  # Angular Default
+    "http://127.0.0.1:80",
     "http://rustfs:9000",
 ]
 
@@ -89,11 +100,13 @@ app.add_middleware(
 async def login(request: Request):
     """Redirect the browser to the KeyCloak authorization endpoint."""
     code_verifier_store: CodeVerifierStore = request.app.state.verifier_store
+    keycloak_openid: KeycloakOpenID = request.app.state.keycloak_openid
     state = secrets.token_urlsafe(16)
     code_verifier, code_challenge, code_challenge_method = generate_pkce_pair()
     # store verifier keyed by state
-    code_verifier_store.create_pkce(state, 300, code_verifier)
+    await code_verifier_store.create_pkce(state, 300, code_verifier)
     auth_url = build_auth_url(
+        keycloak_openid=keycloak_openid,
         state=state,
         code_challenge=code_challenge,
         code_challenge_method=code_challenge_method,
@@ -101,17 +114,24 @@ async def login(request: Request):
     return RedirectResponse(auth_url)
 
 
-@app.get("/callback", summary="Handle OAuth2 authorization code callback")
+@app.get("/authorization-code/callback", summary="Handle OAuth2 authorization code callback")
 async def callback(request: Request, code: str, state: str):
     """Exchange the authorization code for tokens and establish a session."""
     session_store: SessionStore = request.app.state.session_store
     code_verifier_store: CodeVerifierStore = request.app.state.verifier_store
+    key_pair: KeyPair = request.app.state.ec_key_pair
     code_verifier: str = await code_verifier_store.get_pkce(state=state)
-    if not code_verifier:
+    log.info(f"CODE: {code} VERIFIER: {code_verifier}")
+    if code_verifier is None:
         return JSONResponse({"detail": "Invalid or expired state"}, status_code=400)
+    
+    token_set: TokenSet = await exchange_code(
+        code=code,
+        code_verifier=code_verifier,
+        key_pair=key_pair,
+    )
 
-    token_set: TokenSet = await exchange_code(code=code, code_verifier=code_verifier)
-    session_id = await session_store.create(token_set)
+    session_id = await session_store.create(token_set, key_pair)
 
     response = RedirectResponse(url="/")
     response.set_cookie(
@@ -147,7 +167,7 @@ async def me(request: Request):
     if not session_id:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
 
-    token_set = await session_store.get(session_id)
+    token_set, _ = await session_store.get(session_id)
     if not token_set:
         return JSONResponse({"detail": "Session expired"}, status_code=401)
 

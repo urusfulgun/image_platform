@@ -5,26 +5,29 @@ import hashlib
 import os
 import secrets
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 from urllib.parse import urlencode
 from pydantic import BaseModel, HttpUrl
 
 import httpx
 
-from bff_token_handler.settings import settings
+from bff_token_handler.settings import settings, keycloak_config
 from bff_token_handler.auth.dpop import create_dpop_proof, KeyPair
 from keycloak import KeycloakOpenID, pkce_utils, keycloak_uma
-
-
-class KeyCloakOpenIDConfig(BaseModel):
-    server_url: HttpUrl
-    client_id: str
-    realm_name: str
-    client_secret_key: str
+from keycloak import exceptions as kc_exc
+from shared_core.schemas.security.config import (
+    KeyCloakDynamicClientConfig,
+    KeyCloakOpenIDConfig,
+)
+from shared_core.schemas.security.token_set import TokenSet
 
 
 async def get_keycloak_openid(keycloak_config: KeyCloakOpenIDConfig) -> KeycloakOpenID:
     return KeycloakOpenID(**keycloak_config.model_dump(mode="json"))
+
+
+async def get_dynamic_client(keycloak_config: KeyCloakOpenIDConfig) -> KeycloakOpenID:
+    return KeycloakOpenID(**keycloak_config.model_dump(mode='json'))
 
 
 def _b64url(data: bytes) -> str:
@@ -64,18 +67,25 @@ def build_auth_url(
     return auth_url
 
 
-@dataclass
-class TokenSet:
-    """Container for token introspection result."""
+async def get_authorization_code(
+    keycloak_client: KeycloakOpenID, code: str, code_verifier: str
+) -> TokenSet:
+    token = keycloak_client.token(
+            grant_type="authorization_code",
+            code=code,
+            redirect_uri=settings.redirect_uri,
+            code_verifier=code_verifier,
+        )
+    return TokenSet.model_validate(
+        token
+    )
 
-    access_token: str
-    refresh_token: Optional[str]
-    id_token: Optional[str]
-    expires_in: int
-    token_type: str = "Bearer"
 
-
-async def exchange_code(code: str, code_verifier: str, key_pair: KeyPair) -> TokenSet:
+async def exchange_code(
+    code: str,
+    code_verifier: str,
+    key_pair: KeyPair,
+) -> TokenSet:
     """Exchange an authorization code for tokens using PKCE + DPoP.
 
     Args:
@@ -85,31 +95,32 @@ async def exchange_code(code: str, code_verifier: str, key_pair: KeyPair) -> Tok
     Returns:
         TokenSet with access/refresh/id tokens.
     """
+    # Define the Token Endpoint for the DPoP proof
+    # Keycloak Token Exchange with DPoP
+    # In Docker, this is usually http://keycloak:8080/...
     token_endpoint = settings.token_url
+
+    # Generate a fresh DPoP proof for this specific POST request
     dpop_proof = create_dpop_proof("POST", token_endpoint, key_pair)
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            token_endpoint,
-            data={
-                "grant_type": "authorization_code",
-                "client_id": settings.client_id,
-                "client_secret": settings.client_secret,
-                "code": code,
-                "redirect_uri": settings.redirect_uri,
-                "code_verifier": code_verifier,
-            },
-            headers={"DPoP": dpop_proof},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-    return TokenSet(
-        access_token=data["access_token"],
-        refresh_token=data.get("refresh_token"),
-        id_token=data.get("id_token"),
-        expires_in=data.get("expires_in", 300),
+    # RE-INITIALIZE the client with the custom DPoP header
+    # This ensures the library attaches 'DPoP: <proof>' to the outgoing call
+    dynamic_config: KeyCloakDynamicClientConfig = KeyCloakDynamicClientConfig(
+        server_url=keycloak_config.server_url,
+        client_id=settings.client_id,
+        client_secret_key=settings.client_secret,
+        realm_name=keycloak_config.realm_name,
+        custom_headers={"DPoP": dpop_proof},
     )
+    dynamic_client = await get_dynamic_client(keycloak_config=dynamic_config)
+
+    # try:
+    token_response: TokenSet = await get_authorization_code(
+        dynamic_client, code, code_verifier
+    )
+    # except (kc_exc.KeycloakConnectionError, kc_exc.KeycloakPostError) as e:
+    #     raise e
+    return token_response
 
 
 async def introspect_token(access_token: str) -> dict:

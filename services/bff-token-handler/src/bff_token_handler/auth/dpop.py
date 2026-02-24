@@ -15,12 +15,9 @@ import hashlib
 from cryptography.hazmat.primitives.asymmetric import rsa, padding, ec, utils
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.backends import default_backend
+from shared_core.dto.key_pair import KeyPair
 
 COORD_LEN = 32
-
-class KeyPair(NamedTuple):
-    private_key: ec.EllipticCurvePublicKey
-    public_key: ec.EllipticCurvePublicKey
 
 
 def _b64url(data: bytes) -> str:
@@ -36,9 +33,11 @@ def _int_to_b64url(val: int, length: int) -> str:
 
 
 # Generate key pair at startup — one per process instance
-_private_key: ec.EllipticCurvePrivateKey = ec.generate_private_key(ec.SECP256R1())
-_public_key: ec.EllipticCurvePublicKey = _private_key.public_key()
-_pub_numbers: ec.EllipticCurvePublicNumbers = _public_key.public_numbers()
+def generate_ec_key_pair() -> KeyPair:
+    private_key: ec.EllipticCurvePrivateKey = ec.generate_private_key(ec.SECP256R1())
+    public_key: ec.EllipticCurvePublicKey = private_key.public_key()
+    key_pair = KeyPair(private_key, public_key)
+    return key_pair
 
 
 def get_public_jwk(public_numbers: ec.EllipticCurvePublicNumbers) -> dict:

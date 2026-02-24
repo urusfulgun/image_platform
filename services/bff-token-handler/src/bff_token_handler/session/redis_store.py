@@ -12,8 +12,14 @@ from string.templatelib import Template, Interpolation
 
 import redis.asyncio as aioredis
 
-from bff_token_handler.auth.oauth import TokenSet
 from bff_token_handler.settings import settings
+from shared_core.dto.key_pair import KeyPair
+from shared_core.schemas.security.token_set import TokenSet
+from shared_core.schemas.security.session_data import SessionData
+from shared_core.utils.key_pair_marshalling import (
+    marshalling_key_pair,
+    unmarshalling_key_pair_from_model,
+)
 
 
 async def redis_key_tag(it: Template) -> str:
@@ -72,38 +78,35 @@ class SessionStore(AbstractRedisStore):
 
     def _key(self, key: str) -> str:
         """Creates session ID key `session:session_id` for Redis to find a value with it"""
-        return redis_key_tag(t"session:{key}")
+        # return redis_key_tag(t"session:{key}")
+        return f"session:{key}"
 
-    async def create(self, token_set: TokenSet) -> str:
+    async def create(self, token_set: TokenSet, key_pair: KeyPair) -> str:
         """Persist a TokenSet and return a new, random session ID."""
         session_id = secrets.token_urlsafe(32)
-        data = {
-            "access_token": token_set.access_token,
-            "refresh_token": token_set.refresh_token,
-            "id_token": token_set.id_token,
-            "expires_in": token_set.expires_in,
-            "token_type": token_set.token_type,
-        }
+        token_data = token_set.model_dump(mode="json")
+        key_pair_model = marshalling_key_pair(key_pair)
+
+        data = SessionData(
+            token_set=token_data, key_pair=key_pair_model
+        ).model_dump_json()
+
         await self._redis.setex(
             self._key(session_id),
             settings.session_ttl_seconds,
-            json.dumps(data),
+            data,
         )
         return session_id
 
-    async def get(self, session_id: str) -> TokenSet | None:
+    async def get(self, session_id: str) -> tuple[TokenSet, KeyPair] | None:
         """Retrieve a TokenSet by session ID. Returns None if not found."""
         raw = await self._redis.get(self._key(session_id))
         if raw is None:
             return None
-        data = json.loads(raw)
-        return TokenSet(
-            access_token=data["access_token"],
-            refresh_token=data.get("refresh_token"),
-            id_token=data.get("id_token"),
-            expires_in=data.get("expires_in", 300),
-            token_type=data.get("token_type", "Bearer"),
-        )
+        data = SessionData.model_validate_json(raw)
+        token_set = data.token_set
+        key_pair: KeyPair = unmarshalling_key_pair_from_model(data.key_pair)
+        return token_set, key_pair
 
     async def delete(self, session_id: str) -> None:
         """Delete a session by ID (logout)."""
@@ -120,10 +123,11 @@ class CodeVerifierStore:
 
     async def _key(self, key: str) -> str:
         """Creates PKCE state as key `pkce:state` for Redis to find a value with it"""
-        return await redis_key_tag(t"pkce:{key}")
+        # return await redis_key_tag(t"pkce:{key}")
+        return f"pkce:{key}"
 
     async def get_pkce(self, state: str) -> str | None:
-        return self._redis.get(await self._key(state))
+        return await self._redis.get(await self._key(state))
 
     async def create_pkce(self, state: str, ttl: int, code_verifier: str):
         await self._redis.setex(await self._key(state), ttl, code_verifier)

@@ -19,10 +19,12 @@ USER app
 
 ENV UV_CACHE_DIR=/tmp/.uv_cache
 
-# Copy shared-core first (it's a path dependency)
-COPY --chown=app:app ./services/shared-core /app/shared-core
-# Copy the BFF service
-COPY --chown=app:app ./services/bff-token-handler /app
+# Create the directory structure for the path dependency
+# This allows uv to resolve the metadata before you copy the full source
+COPY --chown=app:app ./services/shared-core /app/services/shared-core
+COPY --chown=app:app ./services/bff-token-handler /app/services/bff-token-handler
+
+WORKDIR /app/services/bff-token-handler
 
 RUN uv sync --frozen --no-dev --no-install-project
 

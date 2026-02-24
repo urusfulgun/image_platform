@@ -32,6 +32,7 @@ services:
       - KC_DB_PASSWORD=dev-password
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
       - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_IMPORT_STRATEGY=OVERWRITE_EXISTING
     volumes:
     - ./secrets/keycloak/keycloak-realm.json:/opt/keycloak/data/import/realm.json
     ports:
@@ -158,7 +159,7 @@ services:
       - REALM=image-platform
       - CLIENT_ID=bff-client
       - CLIENT_SECRET_FILE=/run/secrets/bff_client_secret
-      - REDIRECT_URI=http://localhost/api/callback
+      - REDIRECT_URI=http://localhost:80/api/authorization-code/callback
       - REDIS_URL=redis://redis-session:6379/0
       - ASSET_SERVICE_URL=http://asset-service:8000
       - SESSION_COOKIE_NAME=sid
@@ -166,6 +167,8 @@ services:
     depends_on:
       - redis-session
       - keycloak
+    ports:
+      - "8000:8000"
     secrets:
       - bff_client_secret
     networks:
@@ -222,7 +225,7 @@ services:
       - "80:80"
     depends_on:
       - bff-token-handler
-      - asset-service
+      # - asset-service
     networks:
       - backend-net
 

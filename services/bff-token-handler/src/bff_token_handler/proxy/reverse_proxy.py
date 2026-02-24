@@ -30,7 +30,7 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
         return Response(content='{"detail":"Not authenticated"}', status_code=401,
                         media_type="application/json")
 
-    token_set = await session_store.get(session_id)
+    token_set, key_pair = await session_store.get(session_id)
     if not token_set:
         return Response(content='{"detail":"Session expired"}', status_code=401,
                         media_type="application/json")
