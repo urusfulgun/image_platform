@@ -40,6 +40,10 @@ class BffSettings(BaseAppSettings):
     @property
     def token_url(self) -> str:
         return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/token"
+    
+    @property
+    def userinfo_url(self) -> str:
+        return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/userinfo"
 
 
 settings = BffSettings()

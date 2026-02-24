@@ -12,7 +12,7 @@ import logging
 import secrets
 from contextlib import asynccontextmanager
 
-from bff_token_handler.auth.dpop import generate_ec_key_pair
+from bff_token_handler.auth.dpop import decode_jwt_token, generate_ec_key_pair
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -36,6 +36,7 @@ from bff_token_handler.session.redis_store import (
 )
 from bff_token_handler.settings import settings, keycloak_config
 from shared_core.dto.key_pair import KeyPair
+from shared_core.schemas.responses.profile import UserProfileResponse
 from shared_core.schemas.security.token_set import TokenSet
 
 # --- Temporary in-memory store for PKCE state/verifier (per-request) ---
@@ -114,7 +115,9 @@ async def login(request: Request):
     return RedirectResponse(auth_url)
 
 
-@app.get("/authorization-code/callback", summary="Handle OAuth2 authorization code callback")
+@app.get(
+    "/authorization-code/callback", summary="Handle OAuth2 authorization code callback"
+)
 async def callback(request: Request, code: str, state: str):
     """Exchange the authorization code for tokens and establish a session."""
     session_store: SessionStore = request.app.state.session_store
@@ -124,7 +127,7 @@ async def callback(request: Request, code: str, state: str):
     log.info(f"CODE: {code} VERIFIER: {code_verifier}")
     if code_verifier is None:
         return JSONResponse({"detail": "Invalid or expired state"}, status_code=400)
-    
+
     token_set: TokenSet = await exchange_code(
         code=code,
         code_verifier=code_verifier,
@@ -159,7 +162,11 @@ async def logout(request: Request):
     return response
 
 
-@app.get("/me", summary="Return current user info from session")
+@app.get(
+    "/me",
+    summary="Return current user info from session",
+    response_model=UserProfileResponse,
+)
 async def me(request: Request):
     """Return the authenticated user's identity claims."""
     session_id = request.cookies.get(settings.session_cookie_name)
@@ -167,12 +174,14 @@ async def me(request: Request):
     if not session_id:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
 
-    token_set, _ = await session_store.get(session_id)
+    token_set, key_pair = await session_store.get(session_id)
     if not token_set:
         return JSONResponse({"detail": "Session expired"}, status_code=401)
 
-    user_info = await introspect_token(token_set.access_token)
-    return JSONResponse(user_info)
+    user_info_token = await introspect_token(key_pair, token_set.access_token)
+    _, claims, _ = decode_jwt_token(user_info_token)
+    user_info = UserProfileResponse.model_validate(claims)
+    return JSONResponse({"id_token": user_info.model_dump(mode='json')})
 
 
 # ---------------------------------------------------------------------------

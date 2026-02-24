@@ -1,13 +1,21 @@
 import base64
+from typing import Annotated
 
-from pydantic import BaseModel, SecretStr, field_validator
+from pydantic import BaseModel, PlainSerializer, SecretStr, field_validator
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 
+# This tells Pydantic: "When turning this into JSON, use the raw string value"
+SecretStringRaw = Annotated[
+    SecretStr, 
+    PlainSerializer(lambda v: v.get_secret_value(), return_type=str)
+]
+
+
 class ECKeyPairModel(BaseModel):
     public_key_b64: str
-    private_key_b64: SecretStr
+    private_key_b64: SecretStringRaw
 
     @field_validator("private_key_b64", mode="after")
     @classmethod

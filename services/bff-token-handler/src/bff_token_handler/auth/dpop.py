@@ -20,6 +20,27 @@ from shared_core.dto.key_pair import KeyPair
 COORD_LEN = 32
 
 
+def generate_dpop_ath(access_token: str) -> str:
+    """
+    Generates the 'ath' (Access Token Hash) claim for a DPoP proof.
+
+    Args:
+        access_token: The full string value of the JWT access token.
+
+    Returns:
+        A base64url-encoded SHA-256 hash of the token.
+    """
+    # 1. SHA-256 hash of the ASCII encoding of the access token
+    hash_digest = hashlib.sha256(access_token.encode("ascii")).digest()
+
+    # 2. Base64url encode the digest
+    # urlsafe_b64encode uses '-' and '_' instead of '+' and '/'
+    binary_b64 = base64.urlsafe_b64encode(hash_digest)
+
+    # 3. Convert to string and strip the padding (=) as per RFC 7515
+    return binary_b64.decode("ascii").rstrip("=")
+
+
 def _b64url(data: bytes) -> str:
     """Encode bytes to a Base64URL string without padding."""
     return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
@@ -87,10 +108,41 @@ def _encode_header_payload(header: dict, payload: dict) -> bytes:
     return f"{h_b64}.{p_b64}".encode("ascii")
 
 
+def decode_jwt_token(token: str):
+    """
+    Reverses the encoding of a JWT token.
+    Returns: (header_dict, payload_dict, signature_bytes)
+    """
+    # 1. Split the string into its 3 Base64URL components
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise ValueError("Invalid token format. Expected 3 parts.")
+
+    h_b64, p_b64, s_b64 = parts
+
+    def _un_b64url(data: str) -> bytes:
+        # Add back required padding for the base64 library
+        missing_padding = len(data) % 4
+        if missing_padding:
+            data += "=" * (4 - missing_padding)
+        return base64.urlsafe_b64decode(data)
+
+    # 2. Decode Header and Payload back into Dictionaries
+    header = json.loads(_un_b64url(h_b64).decode("utf-8"))
+    payload = json.loads(_un_b64url(p_b64).decode("utf-8"))
+
+    # 3. Decode Signature back into raw Bytes
+    # (The signature remains bytes because it's cryptographic data, not JSON)
+    raw_signature = _un_b64url(s_b64)
+
+    return header, payload, raw_signature
+
+
 def create_dpop_proof(
     htm: str,
     htu: str,
     key_pair: KeyPair,
+    ath: str | None = None,
 ) -> str:
     """Create a signed DPoP proof JWT for a given HTTP method and URI.
 
@@ -118,6 +170,8 @@ def create_dpop_proof(
         "iat": int(time.time()),
         "jkt": thumbprint,
     }
+    if ath:
+        payload["ath"] = ath
 
     # 1. Prepare signing input
     signing_input: bytes = _encode_header_payload(header, payload)
