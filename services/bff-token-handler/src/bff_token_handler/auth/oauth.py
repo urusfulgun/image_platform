@@ -168,7 +168,7 @@ async def clean_bytes(data) -> dict | list | str:
     elif isinstance(data, list):
         return [clean_bytes(i) for i in data]
     elif isinstance(data, bytes):
-        return data.decode('utf-8')
+        return data.decode("utf-8")
     return data
 
 
@@ -196,3 +196,22 @@ async def introspect_token(
     user_info_encoded: bytes = await dpop_user_info(dynamic_client, access_token)
     user_info: dict | list | str = await clean_bytes(user_info_encoded)
     return user_info
+
+
+async def revoke_token_at_keycloak(refresh_token: str, dpop_key_pair: KeyPair) -> None:
+    # Generate the DPoP Proof for the revocation endpoint
+    dpop_proof = create_dpop_proof(
+        "POST",
+        settings.keycloak_revocation_url,
+        dpop_key_pair,
+    )
+
+    dynamic_config: KeyCloakDynamicClientConfig = KeyCloakDynamicClientConfig(
+        server_url=keycloak_config.server_url,
+        client_id=settings.client_id,
+        client_secret_key=settings.client_secret,
+        realm_name=keycloak_config.realm_name,
+        custom_headers={"DPoP": dpop_proof},
+    )
+    dynamic_client = await get_dynamic_client(keycloak_config=dynamic_config)
+    dynamic_client.logout(refresh_token=refresh_token)

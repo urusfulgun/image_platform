@@ -29,7 +29,8 @@ export class AppComponent {
   public profileService = inject(ProfileService);
 
   logout() {
-    // Standard OIDC logout usually redirects to the BFF logout endpoint
-    window.location.href = 'http://localhost:8000/logout';
+    this.profileService.logout().subscribe({
+      error: (err) => console.error('Logout failed', err)
+    });
   }
 }

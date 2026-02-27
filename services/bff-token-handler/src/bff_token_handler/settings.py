@@ -7,6 +7,8 @@ from shared_core.settings import BaseAppSettings
 class BffSettings(BaseAppSettings):
     """Configuration for the BFF Token Handler service."""
 
+    base_url: str = "http://localhost:80"
+
     # KeyCloak
     keycloak_url: str = "http://keycloak:8080"
     realm: str = "image-platform"
@@ -29,6 +31,10 @@ class BffSettings(BaseAppSettings):
     debug: bool = True
 
     @property
+    def frontend_url(self) -> str:
+        return self.base_url
+
+    @property
     def authorize_url(self) -> str:
         # self.KEYCLOAK_BASE_URL is inside cluster network but localhost outside
         return f"{self.keycloak_url}/oauth2/default/v1/authorize"
@@ -48,6 +54,10 @@ class BffSettings(BaseAppSettings):
     @property
     def logout_url(self) -> str:
         return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/logout"
+    
+    @property
+    def keycloak_revocation_url(self) -> str:
+        return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/revoke"
 
 
 settings = BffSettings()

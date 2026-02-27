@@ -12,6 +12,8 @@ import logging
 import secrets
 from contextlib import asynccontextmanager
 
+from shared_core.schemas.security.user_session import UserSession
+
 from bff_token_handler.auth.dpop import decode_jwt_token, generate_ec_key_pair
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +25,7 @@ from bff_token_handler.auth.oauth import (
     generate_pkce_pair,
     get_keycloak_openid,
     introspect_token,
+    revoke_token_at_keycloak,
 )
 from bff_token_handler.proxy.reverse_proxy import proxy_request
 from keycloak import KeycloakOpenID, pkce_utils
@@ -149,16 +152,51 @@ async def callback(request: Request, code: str, state: str):
     return response
 
 
-@app.post("/logout", summary="Terminate the current session")
+@app.post("/logout", summary="Terminate the current session and revoke tokens")
 async def logout(request: Request):
-    """Delete the server-side session and clear the browser cookie."""
     session_id = request.cookies.get(settings.session_cookie_name)
     session_store: SessionStore = request.app.state.session_store
-    if session_id:
+
+    if not session_id:
+        return JSONResponse({"detail": "Already logged out"}, status_code=200)
+
+    # 1. Retrieve tokens and DPoP key from the secure store
+    user_session: UserSession = await session_store.get(session_id)
+    token_set: TokenSet = user_session.token_set
+    key_pair: KeyPair = user_session.key_pair
+
+    if user_session:
+        # 2. Revoke the Refresh Token at Keycloak (DPoP bound) (leverage DPoP private key)
+        # This prevents anyone from using the stolen refresh token later.
+        # await revoke_token_at_keycloak(
+        #     refresh_token=token_set.refresh_token,
+        #     dpop_key_pair=key_pair,
+        # )
+
+        # 3. Delete the server-side session
         await session_store.delete(session_id)
 
-    response = JSONResponse({"detail": "Logged out"})
-    response.delete_cookie(key=settings.session_cookie_name, path="/")
+    # 4. Prepare the OIDC End Session URL for the frontend
+    # Including id_token_hint prevents the Keycloak "Do you want to logout?" prompt.
+    keycloak_logout_url = (
+        f"{settings.keycloak_url}/realms/{settings.realm}/protocol/openid-connect/logout"
+        f"?id_token_hint={token_set.id_token}"
+        f"&post_logout_redirect_uri={settings.frontend_url}"
+    )
+
+    response = JSONResponse(
+        {"detail": "Logged out locally and revoked", "logoutUrl": keycloak_logout_url}
+    )
+
+    # 5. Clear the HttpOnly session cookie
+    response.delete_cookie(
+        key=settings.session_cookie_name,
+        path="/",
+        httponly=True,
+        samesite="lax",  # or "strict"
+        secure=True,
+    )
+
     return response
 
 
@@ -174,14 +212,17 @@ async def me(request: Request):
     if not session_id:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
 
-    token_set, key_pair = await session_store.get(session_id)
-    if not token_set:
+    user_session: UserSession = await session_store.get(session_id)
+    if not user_session.token_set:
         return JSONResponse({"detail": "Session expired"}, status_code=401)
+
+    token_set: TokenSet = user_session.token_set
+    key_pair: KeyPair = user_session.key_pair
 
     user_info_token = await introspect_token(key_pair, token_set.access_token)
     _, claims, _ = decode_jwt_token(user_info_token)
     user_info = UserProfileResponse.model_validate(claims)
-    return JSONResponse({"id_token": user_info.model_dump(mode='json')})
+    return JSONResponse({"id_token": user_info.model_dump(mode="json")})
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,8 @@ import json
 import secrets
 from string.templatelib import Template, Interpolation
 
+from shared_core.schemas.security.user_session import UserSession
+
 
 import redis.asyncio as aioredis
 
@@ -98,15 +100,15 @@ class SessionStore(AbstractRedisStore):
         )
         return session_id
 
-    async def get(self, session_id: str) -> tuple[TokenSet, KeyPair] | None:
+    async def get(self, session_id: str) -> UserSession | None:
         """Retrieve a TokenSet by session ID. Returns None if not found."""
         raw = await self._redis.get(self._key(session_id))
         if raw is None:
             return None
         data = SessionData.model_validate_json(raw)
-        token_set = data.token_set
         key_pair: KeyPair = unmarshalling_key_pair_from_model(data.key_pair)
-        return token_set, key_pair
+        user_session = UserSession(token_set=data.token_set, key_pair=key_pair)
+        return user_session
 
     async def delete(self, session_id: str) -> None:
         """Delete a session by ID (logout)."""
