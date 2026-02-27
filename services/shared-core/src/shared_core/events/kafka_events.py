@@ -3,19 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-
-
-class UserRegisteredEvent(BaseModel):
-    """Published by Debezium/KeyCloak when a new user registers.
-
-    Consumed by AssetService to create a shadow user.
-    Topic: user.registered
-    """
-
-    event_id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    kc_sub: uuid.UUID
-    email: str
-    occurred_at: datetime = Field(default_factory=datetime.utcnow)
+from shared_core.utils.utc import get_utc_now
 
 
 class ImageRawUploadedEvent(BaseModel):
@@ -31,7 +19,7 @@ class ImageRawUploadedEvent(BaseModel):
     raw_s3_path: str
     raw_format: str  # e.g. "jpeg", "png", "webp"
     file_size_bytes: Optional[int] = None
-    occurred_at: datetime = Field(default_factory=datetime.utcnow)
+    occurred_at: datetime = Field(default_factory=get_utc_now)
 
 
 class ImageAvifReadyEvent(BaseModel):
@@ -45,7 +33,7 @@ class ImageAvifReadyEvent(BaseModel):
     image_id: uuid.UUID
     project_id: uuid.UUID
     processed_s3_path: str
-    occurred_at: datetime = Field(default_factory=datetime.utcnow)
+    occurred_at: datetime = Field(default_factory=get_utc_now)
 
 
 class CleanupRequestedEvent(BaseModel):
@@ -57,4 +45,4 @@ class CleanupRequestedEvent(BaseModel):
     event_id: uuid.UUID = Field(default_factory=uuid.uuid4)
     image_id: uuid.UUID
     raw_s3_path: str
-    occurred_at: datetime = Field(default_factory=datetime.utcnow)
+    occurred_at: datetime = Field(default_factory=get_utc_now)

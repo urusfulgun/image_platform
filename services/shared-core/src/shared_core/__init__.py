@@ -3,7 +3,6 @@ from shared_core.models.user import UserSchema
 from shared_core.models.project import ProjectSchema, ProjectStatus
 from shared_core.models.image import ImageSchema, ImageStatus
 from shared_core.events.kafka_events import (
-    UserRegisteredEvent,
     ImageRawUploadedEvent,
     ImageAvifReadyEvent,
     CleanupRequestedEvent,
@@ -17,7 +16,6 @@ __all__ = [
     "ProjectStatus",
     "ImageSchema",
     "ImageStatus",
-    "UserRegisteredEvent",
     "ImageRawUploadedEvent",
     "ImageAvifReadyEvent",
     "CleanupRequestedEvent",

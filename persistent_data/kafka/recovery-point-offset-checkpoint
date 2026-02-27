@@ -1,5 +1,5 @@
 0
-82
+83
 my_connect_offsets 4 0
 __consumer_offsets 13 0
 __consumer_offsets 46 0
@@ -38,6 +38,7 @@ __consumer_offsets 25 0
 __consumer_offsets 8 0
 __consumer_offsets 37 0
 my_connect_offsets 13 0
+keycloak_events.public.user_entity 0 0
 __consumer_offsets 4 0
 __consumer_offsets 33 0
 my_connect_statuses 4 14

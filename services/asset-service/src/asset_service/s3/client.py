@@ -1,4 +1,5 @@
 """S3 client wrapper for RustFS (S3-compatible)."""
+
 import logging
 from typing import Optional
 
@@ -12,7 +13,7 @@ log = logging.getLogger(__name__)
 _s3_client = None
 
 
-def get_s3_client():
+def get_s3_client_():
     global _s3_client
     if _s3_client is None:
         _s3_client = boto3.client(
@@ -24,6 +25,18 @@ def get_s3_client():
             config=Config(signature_version="s3v4"),
         )
     return _s3_client
+
+
+def get_s3_client():
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=settings.s3_endpoint_url,
+        aws_access_key_id="OAhzGogEY7X61ZwjnSmH",
+        aws_secret_access_key="5XItB3Pon6syp7e1cxNvJOTfWlzigEZQkK2FM8Vh",
+        config=Config(signature_version="s3v4"),
+        region_name="us-east-1",
+    )
+    return s3
 
 
 def ensure_buckets() -> None:
@@ -64,7 +77,9 @@ def generate_upload_presigned_url(
     )
 
 
-def generate_download_presigned_url(key: str, bucket: Optional[str] = None, expiry: int = 3600) -> str:
+def generate_download_presigned_url(
+    key: str, bucket: Optional[str] = None, expiry: int = 3600
+) -> str:
     """Generate a pre-signed URL for downloading a processed image."""
     client = get_s3_client()
     return client.generate_presigned_url(

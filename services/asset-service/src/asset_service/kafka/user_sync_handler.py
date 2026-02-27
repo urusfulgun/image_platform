@@ -19,25 +19,36 @@ class UserSyncHandler(ABC):
 
 
 class UpsertUserHandler(UserSyncHandler):
-    """Handles both 'c' (create) and 'u' (update) using PostgreSQL UPSERT"""
+    """Handles 'r' (read/snapshot), 'c' (create), and 'u' (update)"""
 
     async def handle(self, event: KeycloakUserEvent, session: AsyncSession) -> bool:
-        if event.op not in {"c", "u"}:
+        # 1. Include 'r' for the initial sync snapshot
+        if event.op not in {"c", "u", "r"}:
             return False
-        log.info(f"📥🔄 Upserting shadow user: {event.sub}")
 
-        # SQL Alchemy Core / ORM Upsert logic
-        # Assuming you have a User model defined in your project
+        # 2. Safety Check: If Keycloak sends a partial record (common on 'c'),
+        # you might want to skip or handle it so you don't nullify existing data.
+        if event.email is None and event.op == "u":
+            log.debug(
+                f"⏭️ Skipping update for {event.sub} - No email provided (partial event)"
+            )
+            return True
+
+        log.info(f"📥🔄 Syncing user: {event.sub} (Op: {event.op})")
+
         stmt = insert(models.UserModel).values(
             kc_sub=event.sub,
             email=event.email,
+            # username=event.username,  # Added based on your event logs
+            # is_enabled=event.enabled,  # Added based on your event logs
         )
 
-        # If the 'sub' already exists, update the other fields
+        # 3. UPSERT logic: update values ONLY if they changed or aren't null in the event
         stmt = stmt.on_conflict_do_update(
             index_elements=["kc_sub"],
             set_={
-                "email": event.email,
+                "email": stmt.excluded.email,
+                # "is_enabled": stmt.excluded.is_enabled,
             },
         )
 
@@ -46,30 +57,11 @@ class UpsertUserHandler(UserSyncHandler):
         return True
 
 
-# class CreateUserHandler(UserSyncHandler):
-#     async def handle(self, event: KeycloakUserEvent, db_session):
-#         if event.op == "c":
-#             log.info(f"📥 Creating shadow user: {event.username} ({event.sub})")
-#             # SQL: INSERT INTO users (sub, username, email) VALUES (...)
-#             # ON CONFLICT (sub) DO NOTHING (or Update)
-#             return True
-#         return False
-
-
-# class UpdateUserHandler(UserSyncHandler):
-#     async def handle(self, event: KeycloakUserEvent, db_session):
-#         if event.op == "u":
-#             log.info(f"🔄 Updating shadow user: {event.sub}")
-#             # SQL: UPDATE users SET username = ..., email = ... WHERE sub = ...
-#             return True
-#         return False
-
-
 class DeleteUserHandler(UserSyncHandler):
     async def handle(self, event: KeycloakUserEvent, db_session: AsyncSession):
-        if event.op == "d":
-            log.info(f"🗑️ Deleting shadow user: {event.sub}")
-            # SQL: DELETE FROM users WHERE sub = ...
+        # Handle the explicit delete operation
+        if event.op == "d" or event.deleted is True:
+            log.info(f"🗑️ Deleting user: {event.sub}")
             await db_session.execute(
                 delete(models.UserModel).where(models.UserModel.kc_sub == event.sub)
             )
@@ -79,14 +71,33 @@ class DeleteUserHandler(UserSyncHandler):
 
 
 class UserEventOrchestrator:
+    handlers: list[UserSyncHandler]
+
     def __init__(self):
-        self.handlers: list[UserSyncHandler] = [
+        self.handlers = [
             UpsertUserHandler(),
             DeleteUserHandler(),
         ]
 
-    async def process(self, event: KeycloakUserEvent, db_session):
+    async def process(
+        self,
+        event: KeycloakUserEvent | None,
+        user_id_from_key: str,
+        db_session: AsyncSession,
+    ):
+        # Handle Kafka Tombstone (Value is null, but Key contains the ID)
+        if event is None:
+            log.info(f"🪦 Received tombstone for user: {user_id_from_key}")
+            await db_session.execute(
+                delete(models.UserModel).where(
+                    models.UserModel.kc_sub == user_id_from_key
+                )
+            )
+            await db_session.commit()
+            return
+
         for handler in self.handlers:
             if await handler.handle(event, db_session):
-                return  # Event handled successfully
+                return
+
         log.info(f"⚠️ No handler found for operation: {event.op}")
