@@ -2,16 +2,26 @@
   <mat-icon style="margin-right: 10px;">shield</mat-icon>
   <span>Secure File Gateway</span>
   <span class="spacer"></span>
-  <!-- <button mat-icon-button>
-    <mat-icon>account_circle</mat-icon>
-  </button> -->
-  <a mat-flat-button color="accent" href="http://localhost:8000/login">
-    <mat-icon>login</mat-icon>
-    Sign In with Keycloak
-  </a>
+
+  @if (profileService.user(); as user) {
+    <div class="user-chip">
+      <mat-icon>account_circle</mat-icon>
+      <span class="username">{{ user.preferred_username }}</span>
+      <button mat-icon-button (click)="logout()">
+        <mat-icon>logout</mat-icon>
+      </button>
+    </div>
+  } @else {
+    <a mat-flat-button color="accent" href="http://localhost:8000/login">
+      <mat-icon>login</mat-icon>
+      Sign In
+    </a>
+  }
 </mat-toolbar>
 
 <div class="main-container">
+  <app-profile class="profile-summary" />
+
   <mat-card class="upload-card">
     <mat-card-header>
       <mat-card-title>Direct-to-S3 Upload</mat-card-title>
@@ -19,12 +29,9 @@
     </mat-card-header>
 
     <mat-card-content>
-      <p>This component uses DPoP proofs to request presigned URLs from your Resource Server.</p>
+      <p>This component uses <strong>DPoP proofs</strong> to request presigned URLs.</p>
       <app-uploader />
     </mat-card-content>
-
-    <mat-card-footer>
-      <mat-progress-bar mode="buffer"></mat-progress-bar>
-    </mat-card-footer>
   </mat-card>
-</div>
+
+  </div>

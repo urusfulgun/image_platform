@@ -45,6 +45,10 @@ class BffSettings(BaseAppSettings):
     def userinfo_url(self) -> str:
         return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/userinfo"
 
+    @property
+    def logout_url(self) -> str:
+        return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/logout"
+
 
 settings = BffSettings()
 

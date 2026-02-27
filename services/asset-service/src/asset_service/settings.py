@@ -16,6 +16,7 @@ class AssetSettings(BaseAppSettings):
     kafka_bootstrap_servers: str = "kafka:9092"
     kafka_consumer_group: str = "asset-service-group"
     user_registered_topic: str = "user.registered"
+    user_event_topic: str = "keycloak_events.public.user_entity"
     image_raw_uploaded_topic: str = "image.raw.uploaded"
 
     # S3 / RustFS

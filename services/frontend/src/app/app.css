@@ -1,13 +1,33 @@
+/* src/app/app.css */
 .spacer {
     flex: 1 1 auto;
 }
 
-.upload-card {
+.main-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem;
+    gap: 2rem; /* Space between Profile and Uploader cards */
+}
+
+.upload-card, .profile-summary {
     width: 90%;
     max-width: 500px;
-    margin-top: 2rem;
-    padding: 1rem;
     border-radius: 12px;
+}
+
+.user-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 4px 12px;
+    border-radius: 20px;
+}
+
+.username {
+    font-weight: 500;
 }
 
 mat-card-title {
@@ -17,4 +37,10 @@ mat-card-title {
 mat-card-content {
     margin-top: 16px;
     line-height: 1.6;
+}
+
+app-profile {
+    display: block; /* Important! */
+    width: 100%;
+    max-width: 500px;
 }

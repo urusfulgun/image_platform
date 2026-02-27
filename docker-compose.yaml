@@ -13,6 +13,7 @@ services:
       - db_kc_password
     networks:
       - backend-net
+    command: ["postgres", "-c", "wal_level=logical"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U keycloak"]
       interval: 10s
@@ -75,8 +76,20 @@ services:
     networks:
       - backend-net
 
+  debezium-configurator:
+    image: curlimages/curl:latest
+    container_name: debezium-configurator
+    volumes:
+      - ./config/debezium/register-connectors.sh:/usr/bin/register-connectors.sh
+    entrypoint: ["/bin/sh", "/usr/bin/register-connectors.sh"]
+    depends_on:
+      debezium:
+        condition: service_started
+    networks:
+      - backend-net
+
   debezium:
-    image: debezium/connect:2.7
+    image: debezium/connect:2.7.3.Final
     container_name: debezium-connector
     environment:
       - BOOTSTRAP_SERVERS=kafka:9092
@@ -84,9 +97,27 @@ services:
       - CONFIG_STORAGE_TOPIC=my_connect_configs
       - OFFSET_STORAGE_TOPIC=my_connect_offsets
       - STATUS_STORAGE_TOPIC=my_connect_statuses
+      # Ensures the internal topics are created with correct replication
+      - CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR=1
+      - CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR=1
+      - CONNECT_STATUS_STORAGE_REPLICATION_FACTOR=1
+    ports:
+      - "8083:8083"
     depends_on:
       - kafka
       - postgres-keycloak
+    networks:
+      - backend-net
+  
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    restart: always
+    ports:
+      - "8888:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: example@example.com
+      PGADMIN_DEFAULT_PASSWORD: password#11
     networks:
       - backend-net
 
@@ -142,6 +173,7 @@ services:
       - PROCESSED_BUCKET=processed-images
       - KEYCLOAK_URL=http://keycloak:8080
       - REALM=image-platform
+      - USER_REGISTRATION_EVENT_TOPIC=keycloak_events.public.user_entity
     depends_on:
       - postgres-asset-metadata
       - kafka
