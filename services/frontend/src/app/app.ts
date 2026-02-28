@@ -1,5 +1,6 @@
 // src/app/app.ts
 import { Component, inject } from '@angular/core';
+import { RouterOutlet, RouterLink } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -13,6 +14,8 @@ import { ProfileService } from './services/profile.service';
   selector: 'app-root',
   standalone: true,
   imports: [
+    RouterOutlet,
+    RouterLink,
     MatToolbarModule,
     MatCardModule,
     MatIconModule,

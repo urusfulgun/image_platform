@@ -3,6 +3,7 @@
 Consumes user.registered events from Debezium/KeyCloak CDC
 and creates shadow users in the AssetService database.
 """
+
 import asyncio
 import json
 import logging
@@ -28,9 +29,9 @@ async def consume_user_events():
         settings.user_event_topic,
         bootstrap_servers=settings.kafka_bootstrap_servers,
         group_id=settings.kafka_consumer_group,
-        auto_offset_reset="earliest"
+        auto_offset_reset="earliest",
     )
-    
+
     await consumer.start()
     try:
         async for msg in consumer:
@@ -40,21 +41,33 @@ async def consume_user_events():
                 raw_data = msg.value.decode("utf-8")
                 data = json.loads(raw_data)
                 event = KeycloakUserEvent.model_validate(data)
-                
+
+                if event.email is None and event.op != 'd':
+                    log.info(
+                        f"✅ Pass event {correlation_id} for user {event.sub}, because email is None in event."
+                    )
+                    continue
+
                 async with AsyncSessionLocal() as session:
                     await orchestrator.process(event, event.sub, session)
-                    log.info(f"✅ Processed event {correlation_id} for user {event.sub}")
-             
+                    log.info(
+                        f"✅ Processed event {correlation_id} for user {event.sub}"
+                    )
+
             except json.JSONDecodeError:
-                log.error(f"❌ Malformed JSON at {correlation_id}. Raw data: {raw_data}")
+                log.error(
+                    f"❌ Malformed JSON at {correlation_id}. Raw data: {raw_data}"
+                )
             except ValidationError as ve:
-                log.error(f"❌ Schema validation failed at {correlation_id}: {ve.json()}")
+                log.error(
+                    f"❌ Schema validation failed at {correlation_id}: {ve.json()}"
+                )
             except Exception as e:
                 # exc_info=True includes the stack trace automatically
                 log.error(
-                    f"❌ Unexpected error processing event {correlation_id}", 
+                    f"❌ Unexpected error processing event {correlation_id}",
                     exc_info=True,
-                    extra={"raw_payload": raw_data} # If using structured logging
+                    extra={"raw_payload": raw_data},  # If using structured logging
                 )
     except asyncio.CancelledError:
         log.info("Shutting down Kafka consumer gracefully...")

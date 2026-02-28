@@ -24,7 +24,7 @@ class BffSettings(BaseAppSettings):
     session_ttl_seconds: int = 3600
 
     # Upstream AssetService
-    asset_service_url: str = "http://asset-service:8001"
+    asset_service_url: str = "http://asset-service:8000"
     pkce_code_challenge_method: str = 'S256'
 
     # App

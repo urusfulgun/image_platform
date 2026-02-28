@@ -19,7 +19,7 @@ class AssetSettings(BaseAppSettings):
     image_raw_uploaded_topic: str = "image.raw.uploaded"
 
     # S3 / RustFS
-    s3_endpoint_url: str = "http://rustfs-s3:9000"
+    s3_endpoint_url: str = "http://rustfs:9000"
     s3_access_key: str = "OAhzGogEY7X61ZwjnSmH"
     s3_secret_key: str = "5XItB3Pon6syp7e1cxNvJOTfWlzigEZQkK2FM8Vh"
     s3_region: str = "us-east-1"

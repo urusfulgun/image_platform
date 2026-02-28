@@ -31,6 +31,18 @@ class ImageSchema(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ImageSchemaPreview(BaseModel):
+    """Image metadata representation."""
+
+    id: uuid.UUID
+    original_filename: str
+    status: ImageStatus = ImageStatus.PENDING
+    display_url: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class RegisterImageRequest(BaseModel):
     project_id: uuid.UUID
     original_filename: str

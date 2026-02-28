@@ -4,6 +4,11 @@ import { map } from 'rxjs';
 
 export const IS_EXTERNAL_UPLOAD = new HttpContextToken(() => false);
 
+export interface PresignResponse {
+    image_id: string;
+    upload_url: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class UploadService {
     private externalHttp: HttpClient;
@@ -13,10 +18,18 @@ export class UploadService {
         this.externalHttp = new HttpClient(handler);
     }
 
-    private BFF_API = 'http://localhost:8000';
+    private BFF_API = 'http://localhost:80';
 
-    getPresignedUrl(fileName: string) {
-        return this.http.post<{ url: string }>(`${this.BFF_API}/presign`, { fileName });
+    getPresignedUrl(projectId: string, file: File) {
+        const body = {
+            fileName: file.name,
+            fileSizeBytes: file.size
+        };
+        // Passing project_id as a query param or adjusting to your route pattern
+        return this.http.post<PresignResponse>(
+            `${this.BFF_API}/api/proxy/projects/${projectId}/images/presign`, 
+            body
+        );
     }
 
     uploadToPresignedUrl(url: string, file: File) {

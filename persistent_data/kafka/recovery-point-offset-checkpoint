@@ -1,5 +1,5 @@
 0
-83
+84
 my_connect_offsets 4 0
 __consumer_offsets 13 0
 __consumer_offsets 46 0
@@ -15,20 +15,20 @@ my_connect_statuses 1 4
 my_connect_offsets 24 0
 __consumer_offsets 26 0
 my_connect_offsets 12 0
-__consumer_offsets 5 0
+__consumer_offsets 5 4
 __consumer_offsets 38 0
 my_connect_offsets 16 0
 __consumer_offsets 1 0
 __consumer_offsets 34 0
 __consumer_offsets 16 0
 __consumer_offsets 45 0
-my_connect_offsets 5 4
+my_connect_offsets 5 15
 __consumer_offsets 12 0
 __consumer_offsets 41 0
 my_connect_offsets 9 0
 __consumer_offsets 24 0
-__consumer_offsets 20 3
-__consumer_offsets 49 20
+__consumer_offsets 20 4
+__consumer_offsets 49 21
 my_connect_offsets 1 0
 __consumer_offsets 0 0
 __consumer_offsets 29 0
@@ -41,9 +41,9 @@ my_connect_offsets 13 0
 keycloak_events.public.user_entity 0 0
 __consumer_offsets 4 0
 __consumer_offsets 33 0
-my_connect_statuses 4 14
+my_connect_statuses 4 15
 my_connect_offsets 17 0
-keycloak-users 0 10
+keycloak-users 0 27
 my_connect_offsets 2 0
 __consumer_offsets 15 0
 __consumer_offsets 48 0
@@ -55,11 +55,11 @@ __consumer_offsets 19 0
 my_connect_offsets 18 0
 __consumer_offsets 32 0
 my_connect_offsets 22 0
-__consumer_offsets 28 0
+__consumer_offsets 28 835
 my_connect_offsets 10 0
 __consumer_offsets 7 0
 __consumer_offsets 40 0
-my_connect_configs 0 23
+my_connect_configs 0 30
 my_connect_offsets 14 0
 __consumer_offsets 3 0
 __consumer_offsets 36 0
@@ -76,10 +76,11 @@ __consumer_offsets 31 0
 my_connect_offsets 19 0
 __consumer_offsets 27 0
 my_connect_offsets 23 0
+image.raw.uploaded 0 0
 __consumer_offsets 39 0
 my_connect_offsets 11 0
 __consumer_offsets 6 0
 __consumer_offsets 35 0
-my_connect_statuses 2 27
+my_connect_statuses 2 31
 my_connect_offsets 15 0
 __consumer_offsets 2 0

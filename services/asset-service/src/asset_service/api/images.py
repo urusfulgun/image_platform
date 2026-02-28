@@ -1,58 +1,46 @@
 """Images API router — handles image registration and presigned URL generation."""
 
+import logging
 import uuid
 from pathlib import PurePosixPath
 from typing import Annotated
 
+from asset_service.api.schemas import PresignRequest, PresignResponse
+from asset_service.dependencies.clients import get_kafka_producer
+from asset_service.dependencies.domain import get_image_service, get_project_service
 from asset_service.kafka.producer import AssetKafkaProducer
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field, field_validator
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from asset_service.api.deps import get_local_user
-from asset_service.db.models import UserModel
-from asset_service.db.session import get_db
+from asset_service.db.models import ImageMetadataModel, UserModel
 from asset_service.domain.images import ImageService
 from asset_service.domain.projects import ProjectService
 from asset_service.s3.client import generate_upload_presigned_url
 from shared_core.events.kafka_events import ImageRawUploadedEvent
 from shared_core.errors import NotFoundError, ForbiddenError
-from shared_core.models.image import RegisterImageRequest, ImageSchema
+from shared_core.models.image import ImageSchemaPreview, RegisterImageRequest, ImageSchema
 
 router = APIRouter(prefix="/projects/{project_id}/images", tags=["images"])
 
-
-def get_project_service(db: Annotated[AsyncSession, Depends(get_db)]) -> ProjectService:
-    return ProjectService(db)
-
-
-def get_image_service(db: Annotated[AsyncSession, Depends(get_db)]) -> ImageService:
-    return ImageService(db)
+log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
-def get_kafka_producer(request: Request) -> AssetKafkaProducer:
-    # Accessing the producer from app.state (set during startup)
-    return request.app.state.kafka_producer
-
-
-class PresignRequest(BaseModel):
-    file_name: str = Field(alias="fileName")
-    file_size_bytes: int | None = None
-
-    @field_validator("file_name")
-    @classmethod
-    def validate_filename(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("Filename cannot be empty")
-        # Basic security: prevent path traversal
-        if "/" in v or "\\" in v:
-            raise ValueError("Filename cannot contain directory paths")
-        return v
-
-
-class PresignResponse(BaseModel):
-    image_id: uuid.UUID
-    upload_url: str
+def get_image_schema_from_model(image_model: ImageMetadataModel) -> ImageSchema:
+    image_schema = ImageSchema(
+        id=image_model.id,
+        project_id=image_model.project_id,
+        original_filename=image_model.original_filename,
+        raw_s3_path=image_model.raw_s3_path,
+        processed_s3_path=image_model.processed_s3_path,
+        file_size_bytes=image_model.file_size_bytes,
+        dimensions_px=image_model.dimensions_px,
+        status=image_model.status.status,
+        retry_count=image_model.status.retry_count,
+        last_error_log=image_model.status.last_error_log,
+        created_at=image_model.created_at
+    )
+    return image_schema
 
 
 @router.get("/", response_model=list[ImageSchema])
@@ -69,11 +57,30 @@ async def list_images(
     except (NotFoundError, ForbiddenError) as e:
         raise HTTPException(status_code=403, detail=str(e))
     images = await image_svc.list_for_project(project_id)
-    return [ImageSchema.model_validate(i) for i in images]
+    return [get_image_schema_from_model(i) for i in images]
+
+
+@router.get("/preview", response_model=list[ImageSchemaPreview])
+async def list_images_preview(
+    project_id: uuid.UUID,
+    user: Annotated[UserModel, Depends(get_local_user)],
+    project_svc: Annotated[ProjectService, Depends(get_project_service)],
+    image_svc: Annotated[ImageService, Depends(get_image_service)],
+):
+    """List all images in a project with url."""
+    # Verify ownership
+    try:
+        await project_svc.get(project_id=project_id, user_id=user.id)
+    except (NotFoundError, ForbiddenError) as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    images = await image_svc.list_for_project_with_urls(project_id)
+    return images
 
 
 @router.post(
-    "/presign", response_model=PresignResponse, status_code=status.HTTP_201_CREATED
+    "/presign",
+    response_model=PresignResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 async def get_presigned_upload_url(
     project_id: uuid.UUID,
@@ -92,14 +99,17 @@ async def get_presigned_upload_url(
     4. Return the pre-signed URL to the browser for direct upload.
     """
     # Verify project ownership
+    log.info('Presign process started.')
     try:
-        await project_svc.get(project_id=project_id, user_id=user.id)
+        project = await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
         raise HTTPException(status_code=403, detail=str(e))
 
     # Build S3 object key
     suffix = PurePosixPath(request_body.file_name).suffix.lstrip(".") or "bin"
     s3_key = f"{project_id}/{uuid.uuid4()}/{request_body.file_name}"
+
+    log.info(f"Project UUID {project.id}")
 
     # Register image
     image = await image_svc.register(

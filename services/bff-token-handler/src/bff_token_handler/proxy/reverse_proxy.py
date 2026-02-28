@@ -3,14 +3,19 @@
 Forwards authenticated requests to the AssetService, injecting a fresh
 DPoP proof and the access token retrieved from the session store.
 """
+import logging
 from typing import Optional
 
 import httpx
 from fastapi import Request, Response
 
-from bff_token_handler.auth.dpop import create_dpop_proof
+from bff_token_handler.auth.dpop import create_dpop_proof, decode_jwt_token
 from bff_token_handler.session.redis_store import SessionStore
 from bff_token_handler.settings import settings
+
+
+log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 async def proxy_request(request: Request, downstream_path: str) -> Response:
@@ -50,11 +55,15 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
         k: v for k, v in request.headers.items()
         if k.lower() not in HOP_BY_HOP
     }
+    _, info_claims, _ = decode_jwt_token(token_set.id_token)
     forward_headers["Authorization"] = f"DPoP {token_set.access_token}"
     forward_headers["DPoP"] = dpop_proof
+    forward_headers["X-User-Sub"] = info_claims['sub']
 
     # --- Stream body ---
     body = await request.body()
+
+    log.info(f"SID ---> {str(session_id)}")
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         upstream_resp = await client.request(
@@ -63,6 +72,8 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
             headers=forward_headers,
             content=body,
         )
+
+    log.info(f"PROXY RESPONSE ---> {str(upstream_resp)}")
 
     return Response(
         content=upstream_resp.content,

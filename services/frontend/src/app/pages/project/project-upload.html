@@ -1,0 +1,65 @@
+<div class="main-container">
+    <mat-card class="upload-card">
+        <mat-card-header>
+            <mat-icon mat-card-avatar color="primary">collections</mat-icon>
+            <mat-card-title>Project: {{ projectId() }}</mat-card-title>
+            <mat-card-subtitle>Image Set Upload to RustFS</mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+            <div class="drop-zone" [class.dragging]="isDragging()" (dragover)="onDragOver($event)"
+                (dragleave)="onDragLeave($event)" (drop)="onDrop($event)" (click)="fileInput.click()">
+
+                <input type="file" #fileInput (change)="onFilesSelected(fileInput.files)" hidden multiple
+                    accept="image/*" />
+
+                <mat-icon class="upload-icon">cloud_upload</mat-icon>
+                <p>Drag images here or <strong>click to browse</strong></p>
+                <small class="text-muted">Direct binary upload via S3 Presigned URLs</small>
+            </div>
+
+            @if (uploadQueue().length > 0) {
+            <div class="file-list-container">
+                <div class="list-header">
+                    <span>Files ({{ uploadQueue().length }})</span>
+                    <button mat-button color="warn" (click)="uploadQueue.set([])" [disabled]="isUploading()">
+                        Clear All
+                    </button>
+                </div>
+
+                <div class="scrollable-list">
+                    @for (file of uploadQueue(); track file.name) {
+                    <div class="file-item">
+                        <div class="file-info">
+                            <mat-icon>insert_drive_file</mat-icon>
+                            <span class="file-name">{{ file.name }}</span>
+                            <span class="file-size">{{ (file.size / 1024).toFixed(1) }} KB</span>
+
+                            @if (progressMap()[file.name] === 100) {
+                            <mat-icon color="primary">check_circle</mat-icon>
+                            }
+                        </div>
+
+                        <mat-progress-bar mode="determinate" [value]="progressMap()[file.name] || 0"
+                            [color]="progressMap()[file.name] === 100 ? 'accent' : 'primary'">
+                        </mat-progress-bar>
+                    </div>
+                    }
+                </div>
+            </div>
+            }
+        </mat-card-content>
+
+        <mat-card-actions align="end">
+            <button mat-button routerLink="/">Cancel</button>
+            <button mat-raised-button color="primary" (click)="startBulkUpload()"
+                [disabled]="uploadQueue().length === 0 || isUploading()">
+                <mat-icon>rocket_launch</mat-icon>
+                {{ isUploading() ? 'Uploading...' : 'Start Bulk Upload' }}
+            </button>
+        </mat-card-actions>
+    </mat-card>
+    <div class="gallery-section" style="margin-top: 2rem; width: 100%;">
+    <app-project-gallery [projectId]="projectId()" />
+  </div>
+</div>

@@ -1,5 +1,5 @@
 // src/app/components/uploader.component.ts
-import { Component, signal, inject } from '@angular/core';
+import { Component, signal, inject, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
@@ -35,6 +35,7 @@ export class UploaderComponent {
     fileName = signal<string>('');
     progress = signal<number>(0);
     uploading = signal<boolean>(false);
+    projectId = input.required<string>();
 
     onFileSelected(files: FileList | null) {
         if (files && files.length > 0) {
@@ -51,9 +52,9 @@ export class UploaderComponent {
         this.uploading.set(true);
 
         // 1. Get Link -> 2. Upload
-        this.uploadService.getPresignedUrl(file.name).subscribe({
-            next: ({ url }) => {
-                this.uploadService.uploadToPresignedUrl(url, file).subscribe({
+        this.uploadService.getPresignedUrl(this.projectId(), file).subscribe({
+            next: ({ upload_url }) => {
+                this.uploadService.uploadToPresignedUrl(upload_url, file).subscribe({
                     next: (p) => this.progress.set(p),
                     complete: () => this.uploading.set(false),
                     error: () => this.uploading.set(false)
