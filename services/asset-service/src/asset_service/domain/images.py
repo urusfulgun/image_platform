@@ -42,18 +42,30 @@ class ImageService:
         await self.db.refresh(image)
         return image
 
+    async def _get_display_url(self, image: ImageMetadataModel) -> str:
+        s3_client = get_s3_client()
+        status: str = image.status.status
+        if status == "OPTIMIZED":
+            bucket = 'processed-images'
+            s3_key = image.processed_s3_path
+        else:
+            s3_key = image.raw_s3_path
+            bucket = 'raw-images'
+        display_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket, 'Key': s3_key},
+                ExpiresIn=3600
+            )
+        return display_url
+        
+
     async def list_for_project_with_urls(self, project_id: uuid.UUID) -> list[ImageSchemaPreview]:
         images = await self.list_for_project(project_id)
         enriched_images = []
         
         for img in images:
-            s3_client = get_s3_client()
             # Generate a GET URL valid for 1 hour
-            display_url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': 'raw-images', 'Key': img.raw_s3_path},
-                ExpiresIn=3600
-            )
+            display_url = await self._get_display_url(img)
             
             # Combine DB model with the temporary URL
             img_data = {
@@ -77,7 +89,7 @@ class ImageService:
         images = list(result.scalars().all())
         if images:
             image = images[0]
-            log.info(f"first image status {image.status}")
+            log.info(f"first image status {image.status.status}")
         return images
 
     async def update_status(

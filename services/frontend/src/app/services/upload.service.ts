@@ -1,6 +1,6 @@
 import { HttpBackend, HttpClient, HttpContextToken, HttpEventType, HttpHeaders } from '@angular/common/http';
-import { Injectable } from '@angular/core';
-import { map } from 'rxjs';
+import { Injectable, Inject } from '@angular/core';
+import { map, Subject } from 'rxjs';
 
 export const IS_EXTERNAL_UPLOAD = new HttpContextToken(() => false);
 
@@ -13,12 +13,20 @@ export interface PresignResponse {
 export class UploadService {
     private externalHttp: HttpClient;
 
+    // A Subject to notify listeners that an upload has finished
+    private refreshGallerySource = new Subject<void>();
+    refreshGallery$ = this.refreshGallerySource.asObservable();
+
     constructor(private handler: HttpBackend, private http: HttpClient) {
         // This client bypasses the interceptor chain entirely
         this.externalHttp = new HttpClient(handler);
     }
 
     private BFF_API = 'http://localhost:80';
+
+    notifyUploadComplete() {
+        this.refreshGallerySource.next();
+    }
 
     getPresignedUrl(projectId: string, file: File) {
         const body = {

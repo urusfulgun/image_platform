@@ -28,7 +28,7 @@ from bff_token_handler.auth.oauth import (
     revoke_token_at_keycloak,
 )
 from bff_token_handler.proxy.reverse_proxy import proxy_request
-from keycloak import KeycloakOpenID, pkce_utils
+from keycloak import KeycloakAuthenticationError, KeycloakOpenID, pkce_utils
 from bff_token_handler.session.redis_store import (
     SessionStore,
     CodeVerifierStore,
@@ -218,8 +218,10 @@ async def me(request: Request):
 
     token_set: TokenSet = user_session.token_set
     key_pair: KeyPair = user_session.key_pair
-
-    user_info_token = await introspect_token(key_pair, token_set.access_token)
+    try:
+        user_info_token = await introspect_token(key_pair, token_set.access_token)
+    except KeycloakAuthenticationError as e:
+        return JSONResponse({"detail": f"Not authenticated extra: {e.error_message}"}, status_code=e.response_code)
     _, claims, _ = decode_jwt_token(user_info_token)
     user_info = UserProfileResponse.model_validate(claims)
     return JSONResponse({"id_token": user_info.model_dump(mode="json")})
@@ -237,4 +239,12 @@ async def me(request: Request):
 )
 async def proxy(request: Request, path: str):
     """Forward authenticated requests to the AssetService with DPoP tokens."""
+    session_id = request.cookies.get(settings.session_cookie_name)
+    session_store: SessionStore = request.app.state.session_store
+    if not session_id:
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+
+    user_session: UserSession = await session_store.get(session_id)
+    if not user_session.token_set:
+        return JSONResponse({"detail": "Session expired"}, status_code=401)
     return await proxy_request(request, downstream_path=path)

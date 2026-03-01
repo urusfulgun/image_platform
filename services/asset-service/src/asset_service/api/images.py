@@ -5,6 +5,8 @@ import uuid
 from pathlib import PurePosixPath
 from typing import Annotated
 
+from shared_core.utils.s3_object_key import get_s3_object_key
+
 from asset_service.api.schemas import PresignRequest, PresignResponse
 from asset_service.dependencies.clients import get_kafka_producer
 from asset_service.dependencies.domain import get_image_service, get_project_service
@@ -107,7 +109,7 @@ async def get_presigned_upload_url(
 
     # Build S3 object key
     suffix = PurePosixPath(request_body.file_name).suffix.lstrip(".") or "bin"
-    s3_key = f"{project_id}/{uuid.uuid4()}/{request_body.file_name}"
+    s3_key = get_s3_object_key(project_id, request_body.file_name)
 
     log.info(f"Project UUID {project.id}")
 

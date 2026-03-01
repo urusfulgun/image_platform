@@ -55,7 +55,10 @@ export class UploaderComponent {
         this.uploadService.getPresignedUrl(this.projectId(), file).subscribe({
             next: ({ upload_url }) => {
                 this.uploadService.uploadToPresignedUrl(upload_url, file).subscribe({
-                    next: (p) => this.progress.set(p),
+                    next: (p) => {
+                        this.progress.set(p);
+                        this.uploadService.notifyUploadComplete();
+                    },
                     complete: () => this.uploading.set(false),
                     error: () => this.uploading.set(false)
                 });

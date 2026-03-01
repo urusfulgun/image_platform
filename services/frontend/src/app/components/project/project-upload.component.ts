@@ -26,7 +26,7 @@ import { ProjectGalleryComponent } from './project-gallery.component';
     ]
 })
 export class ProjectUploadComponent {
-    projectId = input.required<string>(); 
+    projectId = input.required<string>();
     private uploadSvc = inject(UploadService);
 
     // Signals for UI State
@@ -69,7 +69,7 @@ export class ProjectUploadComponent {
         this.isUploading.set(true);
 
         const files = this.uploadQueue();
-        
+
         // We use a loop to handle multiple files. 
         // For massive sets, you could use forkJoin for parallel or concatMap for sequential.
         files.forEach(file => {
@@ -92,6 +92,10 @@ export class ProjectUploadComponent {
             })
         ).subscribe(p => {
             this.progressMap.update(prev => ({ ...prev, [file.name]: p }));
+            // Trigger notification only when this specific file is done
+            if (p === 100) {
+                this.uploadSvc.notifyUploadComplete();
+            }
         });
     }
 }

@@ -1,11 +1,13 @@
 // src/app/pages/project/project-gallery.component.ts
 import { Component, OnInit, inject, signal, input } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { MatGridListModule } from '@angular/material/grid-list';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
+import { UploadService } from '../../services/upload.service';
 
 @Component({
   selector: 'app-project-gallery',
@@ -71,10 +73,26 @@ import { MatChipsModule } from '@angular/material/chips';
 export class ProjectGalleryComponent implements OnInit {
   projectId = input.required<string>();
   private http = inject(HttpClient);
+
+  private uploadService = inject(UploadService);
+  
   images = signal<any[]>([]);
 
+  constructor() {
+    // Listen for refresh signals throughout the component lifecycle
+    this.uploadService.refreshGallery$
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => {
+        this.loadImages(); // Refresh the list from the Python BFF
+      });
+  }
+
   ngOnInit() {
-    this.http.get<any[]>(`http://localhost/api/proxy/projects/${this.projectId()}/images/preview`)
-      .subscribe(res => this.images.set(res));
+    this.loadImages();
+  }
+
+  loadImages() {
+    const url = `http://localhost/api/proxy/projects/${this.projectId()}/images/preview`;
+    this.http.get<any[]>(url).subscribe(res => this.images.set(res));
   }
 }

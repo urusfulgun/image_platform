@@ -1,9 +1,10 @@
 """Kafka event message schemas for inter-service communication."""
+
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel, Field
-from shared_core.utils.utc import get_utc_now
+from shared_core.utils.utc import get_utc_now, get_utc_now_iso_format
 
 
 class ImageRawUploadedEvent(BaseModel):
@@ -20,6 +21,13 @@ class ImageRawUploadedEvent(BaseModel):
     raw_format: str  # e.g. "jpeg", "png", "webp"
     file_size_bytes: Optional[int] = None
     occurred_at: datetime = Field(default_factory=get_utc_now)
+
+
+class DLQImageProcessingEventPayload(BaseModel):
+    original_event: Any
+    error: str
+    failed_at: str = Field(default_factory=get_utc_now_iso_format)
+    processor_version: str = "1.0.0-py3.14.2"
 
 
 class ImageAvifReadyEvent(BaseModel):
