@@ -3,6 +3,7 @@
 import uuid
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
+from shared_core.utils.endpoint.rs_dpop import validate_dpop
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from asset_service.api.deps import get_local_user
@@ -16,7 +17,11 @@ from asset_service.dependencies.domain import get_image_service, get_project_ser
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-@router.get("/", response_model=list[ProjectSchema])
+@router.get(
+    "/",
+    response_model=list[ProjectSchema],
+    dependencies=[Depends(validate_dpop)],
+)
 async def list_projects(
     user: Annotated[UserModel, Depends(get_local_user)],
     project_svc: Annotated[ProjectService, Depends(get_project_service)],
@@ -26,7 +31,12 @@ async def list_projects(
     return [ProjectSchema.model_validate(p) for p in projects]
 
 
-@router.post("/", response_model=ProjectSchema, status_code=201)
+@router.post(
+    "/",
+    response_model=ProjectSchema,
+    dependencies=[Depends(validate_dpop)],
+    status_code=201,
+)
 async def create_project(
     req: CreateProjectRequest,
     user: Annotated[UserModel, Depends(get_local_user)],
@@ -37,7 +47,11 @@ async def create_project(
     return ProjectSchema.model_validate(project)
 
 
-@router.get("/{project_id}", response_model=ProjectSchema)
+@router.get(
+    "/{project_id}",
+    dependencies=[Depends(validate_dpop)],
+    response_model=ProjectSchema,
+)
 async def get_project(
     project_id: uuid.UUID,
     user: Annotated[UserModel, Depends(get_local_user)],

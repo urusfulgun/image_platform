@@ -8,6 +8,8 @@ dependencies = [
     "pydantic[email,timezone]>=2.12.5",
     "pydantic-settings>=2.13.1",
     "aiokafka>=0.13.0",
+    "pyjwt>=2.11.0",
+    "fastapi>=0.135.1",
 ]
 
 [project.optional-dependencies]

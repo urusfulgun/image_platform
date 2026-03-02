@@ -5,6 +5,7 @@ import uuid
 from pathlib import PurePosixPath
 from typing import Annotated
 
+from shared_core.utils.endpoint.rs_dpop import validate_dpop
 from shared_core.utils.s3_object_key import get_s3_object_key
 
 from asset_service.api.schemas import PresignRequest, PresignResponse
@@ -49,7 +50,11 @@ def get_image_schema_from_model(image_model: ImageMetadataModel) -> ImageSchema:
     return image_schema
 
 
-@router.get("/", response_model=list[ImageSchema])
+@router.get(
+    "/",
+    response_model=list[ImageSchema],
+    dependencies=[Depends(validate_dpop)],
+)
 async def list_images(
     project_id: uuid.UUID,
     user: Annotated[UserModel, Depends(get_local_user)],
@@ -66,7 +71,11 @@ async def list_images(
     return [get_image_schema_from_model(i) for i in images]
 
 
-@router.get("/preview", response_model=list[ImageSchemaPreview])
+@router.get(
+    "/preview",
+    response_model=list[ImageSchemaPreview],
+    dependencies=[Depends(validate_dpop)],
+)
 async def list_images_preview(
     project_id: uuid.UUID,
     user: Annotated[UserModel, Depends(get_local_user)],
@@ -86,6 +95,7 @@ async def list_images_preview(
 @router.post(
     "/presign",
     response_model=PresignResponse,
+    dependencies=[Depends(validate_dpop)],
     status_code=status.HTTP_201_CREATED,
 )
 async def get_presigned_upload_url(

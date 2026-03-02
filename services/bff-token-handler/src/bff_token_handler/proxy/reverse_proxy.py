@@ -9,7 +9,7 @@ from typing import Optional
 import httpx
 from fastapi import Request, Response
 
-from bff_token_handler.auth.dpop import create_dpop_proof, decode_jwt_token
+from bff_token_handler.auth.dpop import create_dpop_proof, decode_jwt_token, generate_dpop_ath
 from bff_token_handler.session.redis_store import SessionStore
 from bff_token_handler.settings import settings
 
@@ -46,10 +46,11 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
         upstream_url = f"{upstream_url}?{request.url.query}"
 
     # --- Fresh DPoP proof for the upstream call ---
-    dpop_proof = create_dpop_proof(request.method, upstream_url, key_pair)
+    ath_claim = generate_dpop_ath(token_set.access_token)
+    dpop_proof = create_dpop_proof(request.method, upstream_url, key_pair, ath=ath_claim)
 
     # --- Forward headers (strip hop-by-hop) ---
-    HOP_BY_HOP = {"host", "connection", "transfer-encoding", "upgrade",
+    HOP_BY_HOP = {"host", "connection", "transfer-encoding", "upgrade", "authorization",
                   "proxy-connection", "keep-alive"}
     forward_headers = {
         k: v for k, v in request.headers.items()
@@ -64,6 +65,7 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
     body = await request.body()
 
     log.info(f"SID ---> {str(session_id)}")
+    log.info(f"Forward headers: {forward_headers}")
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         upstream_resp = await client.request(
