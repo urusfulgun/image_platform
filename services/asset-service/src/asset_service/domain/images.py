@@ -65,7 +65,8 @@ class ImageService:
         status: str = image.status.status
         if status == "OPTIMIZED":
             bucket = "processed-images"
-            s3_key = image.processed_s3_path
+            # s3_key = image.processed_s3_path
+            s3_key = image.preview_s3_path
         else:
             s3_key = image.raw_s3_path
             bucket = "raw-images"
@@ -114,9 +115,11 @@ class ImageService:
         image_id: uuid.UUID,
         new_status: str,
         processed_s3_path: str | None = None,
+        preview_s3_path: str | None = None,
         error_log: str | None = None,
     ) -> None:
         """Update the processing status of an image."""
+        image = None
         status_row = await self.db.get(ImageProcessingStatusModel, image_id)
         if not status_row:
             raise NotFoundError(f"Status row for image {image_id} not found")
@@ -124,7 +127,9 @@ class ImageService:
         if error_log:
             status_row.last_error_log = error_log
         if processed_s3_path:
-            image = await self.db.get(ImageMetadataModel, image_id)
+            image: ImageMetadataModel = await self.db.get(ImageMetadataModel, image_id)
             if image:
                 image.processed_s3_path = processed_s3_path
+        if preview_s3_path and image:
+            image.preview_s3_path = preview_s3_path
         await self.db.commit()

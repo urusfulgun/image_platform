@@ -43,6 +43,7 @@ async def kafka_consumer_task(topic: str, bootstrap_servers: str):
                         image_id=event_data.image_id,
                         new_status="OPTIMIZED",
                         processed_s3_path=event_data.processed_s3_path,
+                        preview_s3_path=event_data.preview_s3_path,
                     )
 
                 log.info(f"Successfully updated status for {event_data.image_id}")

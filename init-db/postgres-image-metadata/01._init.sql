@@ -47,3 +47,10 @@ CREATE INDEX idx_status_lookup ON image_processing_status(status);
 ALTER TABLE image_metadata 
     ADD COLUMN IF NOT EXISTS raw_format VARCHAR(255),
     ADD COLUMN IF NOT EXISTS processed_format VARCHAR(255);
+
+-- Add the preview_s3_path column to image_metadata
+ALTER TABLE image_metadata 
+    ADD COLUMN IF NOT EXISTS preview_s3_path TEXT;
+
+-- Optional: Add a comment to describe the column's purpose
+-- COMMENT ON COLUMN image_metadata.preview_s3_path IS 'S3 URI for the low-resolution preview version of the image';

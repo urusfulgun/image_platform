@@ -9,14 +9,11 @@ from PIL import Image, ImageFile
 import aioboto3
 from shared_core.events.kafka_events import (
     DLQImageProcessingEventPayload,
-    ImageAvifReadyEvent,
+    ImageAvifReadyEvent,  # Note: You may need to update this schema to include preview_s3_path
     ImageRawUploadedEvent,
 )
 
-from shared_core.utils.s3_object_key import (
-    get_new_s3_path,
-    get_s3_object_key,
-)
+from shared_core.utils.s3_object_key import get_s3_object_key
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("KafkaImageProcessor")
@@ -38,10 +35,12 @@ class KafkaImageWorker:
         self.processed_bucket = processed_bucket
         self.session = aioboto3.Session()
 
-        # Topics
         self.INPUT_TOPIC = "image.raw.uploaded"
         self.SUCCESS_TOPIC = "image.avif.ready"
         self.DLQ_TOPIC = "image.raw.failed"
+
+        # Preview Settings
+        self.PREVIEW_SIZE = (300, 300)
 
         self.consumer = AIOKafkaConsumer(
             self.INPUT_TOPIC,
@@ -93,66 +92,80 @@ class KafkaImageWorker:
         except Exception as dlq_err:
             logger.critical(f"Critical failure: Could not send to DLQ: {dlq_err}")
 
+    # ... (run and send_to_dlq methods remain the same) ...
+
     async def handle_processing(self, event: ImageRawUploadedEvent):
-        """Moves data from raw_bucket to processed_bucket after conversion."""
+        """Processes raw image into a high-res AVIF and a small preview tile."""
         async with self.session.client("s3", **self.s3_config) as s3:
-            # 1. Download from RAW bucket
+            # 1. Download
             response = await s3.get_object(
                 Bucket=self.raw_bucket, Key=event.raw_s3_path
             )
             raw_bytes = await response["Body"].read()
 
-            # 2. Convert to AVIF
+            # 2. Process Images (Offload CPU bound task to executor)
             loop = asyncio.get_running_loop()
-            avif_bytes, avif_path = await loop.run_in_executor(
-                None,
-                self._to_avif,
-                raw_bytes,
-                event.raw_s3_path,
-                event.project_id,
+            results = await loop.run_in_executor(
+                None, self._process_image_variants, raw_bytes, event.project_id
             )
 
-            # 3. Upload to PROCESSED bucket
-            await s3.put_object(
-                Bucket=self.processed_bucket,
-                Key=avif_path,
-                Body=avif_bytes,
-                ContentType="image/avif",
-            )
+            main_img, preview_img = results
+
+            # 3. Upload both variants
+            uploads = [
+                s3.put_object(
+                    Bucket=self.processed_bucket,
+                    Key=main_img["path"],
+                    Body=main_img["bytes"],
+                    ContentType="image/avif",
+                ),
+                s3.put_object(
+                    Bucket=self.processed_bucket,
+                    Key=preview_img["path"],
+                    Body=preview_img["bytes"],
+                    ContentType="image/avif",
+                ),
+            ]
+            await asyncio.gather(*uploads)
 
             # 4. Produce Success Event
+            # Ensure your ImageAvifReadyEvent schema supports preview_s3_path
             ready_event = ImageAvifReadyEvent(
                 image_id=event.image_id,
                 project_id=event.project_id,
-                processed_s3_path=avif_path,
+                processed_s3_path=main_img["path"],
+                preview_s3_path=preview_img["path"],
             )
             await self.producer.send_and_wait(
                 self.SUCCESS_TOPIC, ready_event.model_dump(mode="json")
             )
-            logger.info(f"Processed: {event.image_id} -> {avif_path}")
+            logger.info(f"Processed variants for: {event.image_id}")
 
-    def _get_s3_key(self, project_id: str, sufix: str) -> str:
-        return get_s3_object_key(
-            project_id=project_id,
-            sufix=sufix,
-        )
-
-    def _to_avif(
-        self, data: bytes, original_path: str, project_id: str
-    ) -> tuple[bytes, str]:
-        """Synchronous CPU-intensive conversion."""
+    def _process_image_variants(self, data: bytes, project_id: str) -> tuple:
+        """Synchronous transformation of images."""
         with Image.open(io.BytesIO(data)) as img:
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
-            buf = io.BytesIO()
-            # AVIF settings: quality 60 (high efficiency), speed 6 (balanced)
-            img.save(buf, format="AVIF", quality=60, speed=6)
+            # --- Generate Main High-Res ---
+            main_buf = io.BytesIO()
+            img.save(main_buf, format="AVIF", quality=60, speed=6)
+            main_path = get_s3_object_key(project_id, "optimized.avif")
 
-            # Create path for processed bucket
-            # Example: "uploads/image.jpg" -> "uploads/image.avif"
-            new_path = self._get_s3_key(project_id, "optimized.avif")
-            return buf.getvalue(), new_path
+            # --- Generate Preview Tile ---
+            # Use thumbnail() to maintain aspect ratio
+            preview_img = img.copy()
+            preview_img.thumbnail(self.PREVIEW_SIZE, Image.Resampling.LANCZOS)
+
+            preview_buf = io.BytesIO()
+            # Lower quality is fine for tiny tiles to save bandwidth
+            preview_img.save(preview_buf, format="AVIF", quality=40, speed=8)
+            preview_path = get_s3_object_key(project_id, "preview_tile.avif")
+
+            return (
+                {"bytes": main_buf.getvalue(), "path": main_path},
+                {"bytes": preview_buf.getvalue(), "path": preview_path},
+            )
 
 
 # --- Main Entry ---
