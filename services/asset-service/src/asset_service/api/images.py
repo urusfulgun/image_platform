@@ -123,7 +123,7 @@ async def get_presigned_upload_url(
 
     # Build S3 object key
     suffix = PurePosixPath(request_body.file_name).suffix.lstrip(".") or "bin"
-    s3_key = get_s3_object_key(project_id, request_body.file_name)
+    s3_key = get_s3_object_key(project_id, f'normal.{suffix}')
 
     log.info(f"Project UUID {project.id}")
 

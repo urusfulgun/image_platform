@@ -2,11 +2,12 @@ import os
 from pathlib import PurePosixPath
 from pathlib import Path
 import uuid
+from urllib.parse import quote
 
 
-def get_s3_object_key(project_id: str, file_name: str) -> str:
+def get_s3_object_key(project_id: str, sufix: str) -> str:
     # Build S3 object key
-    s3_key = f"{project_id}/{uuid.uuid4()}/{file_name}"
+    s3_key = f"{project_id}/{uuid.uuid4()}/{quote(sufix, safe='')}"
     return s3_key
 
 

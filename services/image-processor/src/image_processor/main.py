@@ -15,6 +15,7 @@ from shared_core.events.kafka_events import (
 
 from shared_core.utils.s3_object_key import (
     get_new_s3_path,
+    get_s3_object_key,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -130,10 +131,9 @@ class KafkaImageWorker:
             )
             logger.info(f"Processed: {event.image_id} -> {avif_path}")
 
-    def _get_s3_key(self, project_id: str, raw_s3_path: str, sufix: str) -> str:
-        return get_new_s3_path(
+    def _get_s3_key(self, project_id: str, sufix: str) -> str:
+        return get_s3_object_key(
             project_id=project_id,
-            original_s3_path=raw_s3_path,
             sufix=sufix,
         )
 
@@ -151,7 +151,7 @@ class KafkaImageWorker:
 
             # Create path for processed bucket
             # Example: "uploads/image.jpg" -> "uploads/image.avif"
-            new_path = self._get_s3_key(project_id, original_path, ".avif")
+            new_path = self._get_s3_key(project_id, "optimized.avif")
             return buf.getvalue(), new_path
 
 
