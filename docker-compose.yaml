@@ -34,6 +34,20 @@ services:
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
       - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
       - KC_IMPORT_STRATEGY=OVERWRITE_EXISTING
+      # - KC_MAIL_ENABLED=true
+      # - KC_MAIL_HOST=mailpit
+      # - KC_MAIL_PORT=1025
+      # - KC_MAIL_FROM=admin@keycloak.local
+      # - KC_MAIL_FROM_DISPLAY_NAME=Keycloak-Auth
+      
+      # - KC_SMTP_HOST
+      # - KC_SMTP_PORT
+      # - KC_SMTP_FROM
+      # - KC_SMTP_SSL
+      # - KC_SMTP_STARTTLS
+      # - KC_SMTP_USERNAME
+      # - KC_SMTP_PASSWORD
+
     volumes:
     - ./secrets/keycloak/keycloak-realm.json:/opt/keycloak/data/import/realm.json
     ports:
@@ -143,7 +157,8 @@ services:
 
   # --- INFRASTRUCTURE: STORAGE & MAIL ---
   rustfs:
-    image: rustfs/rustfs:latest
+    # image: rustfs/rustfs:latest
+    image: rustfs/rustfs:1.0.0-alpha.83
     container_name: rustfs-s3
     environment:
       - RUSTFS_ROOT_USER=rustfsadmin
@@ -164,6 +179,11 @@ services:
       - "1025:1025" # SMTP
     networks:
       - backend-net
+    # healthcheck:
+      # test: ["CMD", "curl", "-f", "http://localhost:8025/"]
+      # interval: 10s
+      # timeout: 5s
+      # retries: 3
 
   # --- APPLICATION SERVICES ---
   postgres-asset-metadata:
@@ -272,8 +292,8 @@ services:
   notification-worker:
     build:
       context: .
-      dockerfile: docker/workers.Dockerfile
-      target: notification
+      dockerfile: docker/email-notification.Dockerfile
+      target: production
     container_name: notification-worker
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092

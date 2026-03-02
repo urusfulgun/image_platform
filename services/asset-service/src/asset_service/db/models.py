@@ -80,7 +80,9 @@ class ImageMetadataModel(Base):
         nullable=False,
     )
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    raw_format: Mapped[str] = mapped_column(String(255), nullable=False)
     raw_s3_path: Mapped[str] = mapped_column(Text, nullable=False)
+    processed_format: Mapped[str] = mapped_column(String(255), nullable=True)
     processed_s3_path: Mapped[Optional[str]] = mapped_column(Text)
     file_size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger)
     dimensions_px: Mapped[Optional[str]] = mapped_column(String(20))

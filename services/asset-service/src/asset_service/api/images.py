@@ -11,7 +11,7 @@ from asset_service.api.schemas import PresignRequest, PresignResponse
 from asset_service.dependencies.clients import get_kafka_producer
 from asset_service.dependencies.domain import get_image_service, get_project_service
 from asset_service.kafka.producer import AssetKafkaProducer
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from asset_service.api.deps import get_local_user
 from asset_service.db.models import ImageMetadataModel, UserModel
@@ -20,7 +20,11 @@ from asset_service.domain.projects import ProjectService
 from asset_service.s3.client import generate_upload_presigned_url
 from shared_core.events.kafka_events import ImageRawUploadedEvent
 from shared_core.errors import NotFoundError, ForbiddenError
-from shared_core.models.image import ImageSchemaPreview, RegisterImageRequest, ImageSchema
+from shared_core.models.image import (
+    ImageSchemaPreview,
+    RegisterImageRequest,
+    ImageSchema,
+)
 
 router = APIRouter(prefix="/projects/{project_id}/images", tags=["images"])
 
@@ -40,7 +44,7 @@ def get_image_schema_from_model(image_model: ImageMetadataModel) -> ImageSchema:
         status=image_model.status.status,
         retry_count=image_model.status.retry_count,
         last_error_log=image_model.status.last_error_log,
-        created_at=image_model.created_at
+        created_at=image_model.created_at,
     )
     return image_schema
 
@@ -101,7 +105,7 @@ async def get_presigned_upload_url(
     4. Return the pre-signed URL to the browser for direct upload.
     """
     # Verify project ownership
-    log.info('Presign process started.')
+    log.info("Presign process started.")
     try:
         project = await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
@@ -132,7 +136,7 @@ async def get_presigned_upload_url(
         raw_format=suffix,
         file_size_bytes=request_body.file_size_bytes,
     )
-    await kafka_producer.publish_image_raw_uploaded(event)
+    await kafka_producer.publish_image_raw_presign_link_generated_topic(event)
 
     # Generate pre-signed URL
     upload_url = generate_upload_presigned_url(key=s3_key)

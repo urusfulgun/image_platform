@@ -5,7 +5,7 @@ import logging
 import signal
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from aiobotocore.config import AioConfig
-from PIL import Image
+from PIL import Image, ImageFile
 import aioboto3
 from shared_core.events.kafka_events import (
     DLQImageProcessingEventPayload,
@@ -19,6 +19,8 @@ from shared_core.utils.s3_object_key import (
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("KafkaImageProcessor")
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class KafkaImageWorker:

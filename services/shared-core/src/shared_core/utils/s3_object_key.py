@@ -18,3 +18,8 @@ def get_new_s3_path(project_id: str, original_s3_path: str, sufix: str) -> str:
     original_filename = extract_filename(original_s3_path)
     filename = PurePosixPath(original_filename).with_suffix(sufix)
     return get_s3_object_key(project_id, filename)
+
+
+def get_extension(filename: str) -> str:
+    # .suffix returns '.gz' for 'archive.tar.gz'
+    return PurePosixPath(filename).suffix

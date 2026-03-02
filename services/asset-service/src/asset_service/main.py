@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from asset_service.api.images import router as images_router
 from asset_service.api.projects import router as projects_router
+from asset_service.api.s3_callbacks import router as s3_callback_router
 from asset_service.lifespans.hub import lifespan_manager
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ app = FastAPI(
 
 app.include_router(projects_router)
 app.include_router(images_router)
+app.include_router(s3_callback_router)
 
 
 @app.get("/health", tags=["ops"])

@@ -17,6 +17,7 @@ class AssetSettings(BaseAppSettings):
     kafka_consumer_group: str = "asset-service-group"
     user_event_topic: str = "keycloak-users"
     image_raw_uploaded_topic: str = "image.raw.uploaded"
+    image_raw_presign_link_generated_topic: str = "image.raw.uploading_link_generated"
 
     # S3 / RustFS
     s3_endpoint_url: str = "http://rustfs:9000"
