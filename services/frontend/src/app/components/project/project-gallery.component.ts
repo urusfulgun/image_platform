@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, input } from '@angular/core';
+import { Component, OnInit, inject, signal, input, DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatButtonModule } from '@angular/material/button';
 import { UploadService } from '../../services/upload.service';
+import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of } from 'rxjs';
 
 @Component({
   selector: 'app-project-gallery',
@@ -68,75 +69,66 @@ import { UploadService } from '../../services/upload.service';
   `,
   styles: [`
     .gallery-view { padding: 24px; }
-    
-    /* FIX: Force card to be a flex container and occupy full tile height */
-    .asset-card { 
-      width: 100%; 
-      height: 100%; 
-      display: flex; 
-      flex-direction: column; 
-      overflow: hidden; 
-    }
-
-    /* FIX: image-wrapper grows to fill space, but doesn't push footer out */
-    .image-wrapper { 
-      position: relative; 
-      flex: 1; 
-      min-height: 0; /* Important for flex-grow in some browsers */
-      width: 100%; 
-      background: #2a2a2a; 
-    }
-
+    .asset-card { width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+    .image-wrapper { position: relative; flex: 1; min-height: 0; width: 100%; background: #2a2a2a; }
     .image-wrapper img { width: 100%; height: 100%; object-fit: cover; transition: opacity 0.3s; }
     .pending img { opacity: 0.3; filter: blur(4px); }
-    
-    .status-overlay {
-      position: absolute; inset: 0; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; color: white; gap: 8px;
-    }
+    .status-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; gap: 8px; }
     .spin { animation: rotate 2s linear infinite; }
     @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    
-    .footer-content { 
-      padding: 0 8px; 
-      font-size: 12px; 
-      display: flex; 
-      align-items: center; 
-      justify-content: space-between; 
-      height: 48px; 
-      background: white; /* Ensures button is always visible over dark wrapper */
-    }
-
-    .filename { 
-      white-space: nowrap; 
-      overflow: hidden; 
-      text-overflow: ellipsis; 
-      margin-right: 8px;
-      flex: 1; /* Allows text to take available space */
-    }
-
-    .download-btn {
-      flex-shrink: 0; /* Prevents the button from being squeezed */
-      transform: scale(0.8);
-    }
+    .footer-content { padding: 0 8px; font-size: 12px; display: flex; align-items: center; justify-content: space-between; height: 48px; background: white; }
+    .filename { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 8px; flex: 1; }
+    .download-btn { flex-shrink: 0; transform: scale(0.8); }
   `]
 })
 export class ProjectGalleryComponent implements OnInit {
+  // 1. Move all injections to the top level (Injection Context)
+  private readonly http = inject(HttpClient);
+  private readonly uploadService = inject(UploadService);
+  private readonly destroyRef = inject(DestroyRef);
+
   projectId = input.required<string>();
-  private http = inject(HttpClient);
-  private uploadService = inject(UploadService);
   images = signal<any[]>([]);
+  
+  // Subject used to cancel the existing poll if a new one is triggered
+  private stopPolling$ = new Subject<void>();
 
   constructor() {
+    // Listen for manual refreshes from the upload service
     this.uploadService.refreshGallery$
       .pipe(takeUntilDestroyed())
-      .subscribe(() => this.loadImages());
+      .subscribe(() => this.startPolling());
   }
 
-  ngOnInit() { this.loadImages(); }
+  ngOnInit() {
+    this.startPolling();
+  }
 
-  loadImages() {
+  /**
+   * Refreshes the gallery every 3 seconds as long as any image is 'PENDING'
+   */
+  startPolling() {
+    // Stop any timer currently running
+    this.stopPolling$.next();
+
+    timer(0, 3000)
+      .pipe(
+        switchMap(() => this.fetchImages().pipe(
+          catchError(() => of(this.images())) // On error, keep existing images and try again
+        )),
+        tap(res => this.images.set(res)),
+        // 2. Logic: Continue polling while at least one image is PENDING.
+        // The 'true' parameter ensures the final "all OPTIMIZED" emission updates the UI.
+        takeWhile(res => res.some(img => img.status === 'PENDING'), true),
+        takeUntil(this.stopPolling$),
+        // Pass destroyRef since we are potentially subscribing outside the constructor
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe();
+  }
+
+  private fetchImages() {
     const url = `http://localhost/api/proxy/projects/${this.projectId()}/images/preview`;
-    this.http.get<any[]>(url).subscribe(res => this.images.set(res));
+    return this.http.get<any[]>(url);
   }
 }
