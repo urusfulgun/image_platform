@@ -1,14 +1,15 @@
-import { Component, OnInit, inject, signal, input, DestroyRef } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Component, OnInit, inject, signal, input, DestroyRef, computed } from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
+import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout'; // Added for responsiveness
 import { MatGridListModule } from '@angular/material/grid-list';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatButtonModule } from '@angular/material/button';
 import { UploadService } from '../../services/upload.service';
-import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of } from 'rxjs';
+import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of, map } from 'rxjs';
 
 @Component({
   selector: 'app-project-gallery',
@@ -21,7 +22,7 @@ import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of } 
         <p class="subtitle">ID: {{ projectId() }}</p>
       </header>
 
-      <mat-grid-list cols="4" rowHeight="1:1" gutterSize="16px">
+      <mat-grid-list [cols]="columnCount()" rowHeight="1:1" gutterSize="16px">
         @for (img of images(); track img.id) {
           <mat-grid-tile>
             <mat-card class="asset-card">
@@ -68,7 +69,7 @@ import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of } 
     </div>
   `,
   styles: [`
-    .gallery-view { padding: 24px; }
+    .gallery-view { padding: 24px; max-width: 1400px; margin: 0 auto; }
     .asset-card { width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
     .image-wrapper { position: relative; flex: 1; min-height: 0; width: 100%; background: #2a2a2a; }
     .image-wrapper img { width: 100%; height: 100%; object-fit: cover; transition: opacity 0.3s; }
@@ -79,22 +80,43 @@ import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of } 
     .footer-content { padding: 0 8px; font-size: 12px; display: flex; align-items: center; justify-content: space-between; height: 48px; background: white; }
     .filename { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 8px; flex: 1; }
     .download-btn { flex-shrink: 0; transform: scale(0.8); }
+
+    /* Extra safety for very small screens */
+    @media (max-width: 600px) {
+      .gallery-view { padding: 12px; }
+      .footer-content { height: 40px; font-size: 11px; }
+    }
   `]
 })
 export class ProjectGalleryComponent implements OnInit {
-  // 1. Move all injections to the top level (Injection Context)
   private readonly http = inject(HttpClient);
   private readonly uploadService = inject(UploadService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly breakpointObserver = inject(BreakpointObserver);
 
   projectId = input.required<string>();
   images = signal<any[]>([]);
-  
-  // Subject used to cancel the existing poll if a new one is triggered
   private stopPolling$ = new Subject<void>();
 
+  /**
+   * Responsive Column Logic:
+   * Maps screen size breakpoints to the number of columns.
+   */
+  columnCount = toSignal(
+    this.breakpointObserver
+      .observe([Breakpoints.XSmall, Breakpoints.Small, Breakpoints.Medium, Breakpoints.Large])
+      .pipe(
+        map(result => {
+          if (result.breakpoints[Breakpoints.XSmall]) return 1;
+          if (result.breakpoints[Breakpoints.Small]) return 2;
+          if (result.breakpoints[Breakpoints.Medium]) return 3;
+          return 4; // Large and up
+        })
+      ),
+    { initialValue: 4 }
+  );
+
   constructor() {
-    // Listen for manual refreshes from the upload service
     this.uploadService.refreshGallery$
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.startPolling());
@@ -104,24 +126,16 @@ export class ProjectGalleryComponent implements OnInit {
     this.startPolling();
   }
 
-  /**
-   * Refreshes the gallery every 3 seconds as long as any image is 'PENDING'
-   */
   startPolling() {
-    // Stop any timer currently running
     this.stopPolling$.next();
-
     timer(0, 3000)
       .pipe(
         switchMap(() => this.fetchImages().pipe(
-          catchError(() => of(this.images())) // On error, keep existing images and try again
+          catchError(() => of(this.images()))
         )),
         tap(res => this.images.set(res)),
-        // 2. Logic: Continue polling while at least one image is PENDING.
-        // The 'true' parameter ensures the final "all OPTIMIZED" emission updates the UI.
         takeWhile(res => res.some(img => img.status === 'PENDING'), true),
         takeUntil(this.stopPolling$),
-        // Pass destroyRef since we are potentially subscribing outside the constructor
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe();
