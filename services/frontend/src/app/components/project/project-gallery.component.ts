@@ -1,4 +1,3 @@
-// src/app/pages/project/project-gallery.component.ts
 import { Component, OnInit, inject, signal, input } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
@@ -7,12 +6,14 @@ import { MatGridListModule } from '@angular/material/grid-list';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatButtonModule } from '@angular/material/button'; // Added for the button
 import { UploadService } from '../../services/upload.service';
 
 @Component({
   selector: 'app-project-gallery',
   standalone: true,
-  imports: [CommonModule, MatGridListModule, MatCardModule, MatIconModule, MatChipsModule],
+  // Added MatButtonModule to imports
+  imports: [CommonModule, MatGridListModule, MatCardModule, MatIconModule, MatChipsModule, MatButtonModule],
   template: `
     <div class="gallery-view">
       <header>
@@ -37,7 +38,20 @@ import { UploadService } from '../../services/upload.service';
               
               <mat-card-footer>
                 <div class="footer-content">
-                  <span class="filename">{{ img.original_filename }}</span>
+                  <span class="filename" [title]="img.original_filename">
+                    {{ img.original_filename }}
+                  </span>
+
+                  @if (img.status === 'OPTIMIZED') {
+                    <a mat-icon-button 
+                       [href]="img.processed_image_url" 
+                       [download]="img.original_filename"
+                       target="_blank"
+                       color="primary"
+                       class="download-btn">
+                      <mat-icon>download</mat-icon>
+                    </a>
+                  }
                 </div>
               </mat-card-footer>
             </mat-card>
@@ -67,23 +81,40 @@ import { UploadService } from '../../services/upload.service';
     .spin { animation: rotate 2s linear infinite; }
     @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     
-    .footer-content { padding: 8px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Updated Footer Styles */
+    .footer-content { 
+      padding: 4px 8px; 
+      font-size: 12px; 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between; 
+      height: 48px; /* Standard Material icon button height */
+    }
+
+    .filename { 
+      white-space: nowrap; 
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+      margin-right: 8px;
+    }
+
+    .download-btn {
+      transform: scale(0.8); /* Slightly smaller to fit better in the card footer */
+    }
   `]
 })
 export class ProjectGalleryComponent implements OnInit {
   projectId = input.required<string>();
   private http = inject(HttpClient);
-
   private uploadService = inject(UploadService);
   
   images = signal<any[]>([]);
 
   constructor() {
-    // Listen for refresh signals throughout the component lifecycle
     this.uploadService.refreshGallery$
       .pipe(takeUntilDestroyed())
       .subscribe(() => {
-        this.loadImages(); // Refresh the list from the Python BFF
+        this.loadImages();
       });
   }
 

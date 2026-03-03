@@ -45,6 +45,15 @@ class ImageService:
         await self.db.refresh(image)
         return image
 
+    async def get_presign_download_link(
+        self, s3_client, bucket: str, s3_key: str, expires_is: int = 3600
+    ) -> str:
+        return s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": s3_key},
+            ExpiresIn=expires_is,
+        )
+
     async def get_by_s3_path(self, s3_path: str) -> ImageMetadataModel | None:
         """
         Lookup an image by its raw S3 path.
@@ -60,8 +69,7 @@ class ImageService:
         result = await self.db.execute(stmt)
         return result.scalars().one_or_none()
 
-    async def _get_display_url(self, image: ImageMetadataModel) -> str:
-        s3_client = get_s3_client()
+    async def _get_display_url(self, s3_client, image: ImageMetadataModel) -> str:
         status: str = image.status.status
         if status == "OPTIMIZED":
             bucket = "processed-images"
@@ -70,20 +78,44 @@ class ImageService:
         else:
             s3_key = image.raw_s3_path
             bucket = "raw-images"
-        display_url = s3_client.generate_presigned_url(
-            "get_object", Params={"Bucket": bucket, "Key": s3_key}, ExpiresIn=3600
+        display_url = await self.get_presign_download_link(
+            s3_client,
+            bucket,
+            s3_key,
         )
         return display_url
+
+    async def get_processed_link(
+        self, s3_client, image: ImageMetadataModel
+    ) -> str | None:
+        link = None
+        if image.status.status == "OPTIMIZED":
+            link = await self.get_presign_download_link(
+                s3_client,
+                bucket="processed-images",
+                s3_key=image.processed_s3_path,
+            )
+        return link
+
+    async def get_raw_link(self, s3_client, image: ImageMetadataModel) -> str | None:
+        link = None
+        if image.status.status == "PENDING" or image.status.status == "OPTIMIZED":
+            link = await self.get_presign_download_link(
+                s3_client,
+                bucket="raw-images",
+                s3_key=image.raw_s3_path,
+            )
+        return link
 
     async def list_for_project_with_urls(
         self, project_id: uuid.UUID
     ) -> list[ImageSchemaPreview]:
         images = await self.list_for_project(project_id)
         enriched_images = []
-
+        s3_client = get_s3_client()
         for img in images:
             # Generate a GET URL valid for 1 hour
-            display_url = await self._get_display_url(img)
+            display_url = await self._get_display_url(s3_client, img)
 
             # Combine DB model with the temporary URL
             img_data = {
@@ -92,6 +124,14 @@ class ImageService:
                 "status": img.status.status,  # Accessing the relationship
                 "display_url": display_url,
                 "created_at": img.created_at.isoformat(),
+                "raw_image_url": await self.get_raw_link(
+                    s3_client,
+                    img,
+                ),
+                "processed_image_url": await self.get_processed_link(
+                    s3_client,
+                    img,
+                ),
             }
             enriched_images.append(img_data)
 

@@ -39,6 +39,9 @@ class ImageSchemaPreview(BaseModel):
     status: ImageStatus = ImageStatus.PENDING
     display_url: str
     created_at: datetime
+    raw_image_url: str | None
+    processed_image_url: str | None
+
 
     model_config = {"from_attributes": True}
 

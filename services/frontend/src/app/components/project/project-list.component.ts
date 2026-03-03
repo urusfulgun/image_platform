@@ -7,16 +7,16 @@ import { HttpClient } from '@angular/common/http';
 import { MatIconModule } from '@angular/material/icon';
 
 @Component({
-    selector: 'app-project-list',
-    standalone: true,
-    imports: [
-        CommonModule,
-        MatButtonModule,
-        MatCardModule,
-        RouterLink,
-        MatIconModule
-    ],
-    template: `
+  selector: 'app-project-list',
+  standalone: true,
+  imports: [
+    CommonModule,
+    MatButtonModule,
+    MatCardModule,
+    RouterLink,
+    MatIconModule
+  ],
+  template: `
     <div class="view-wrapper">
       @if (projects().length === 0) {
         <mat-card class="upload-card">
@@ -30,6 +30,16 @@ import { MatIconModule } from '@angular/material/icon';
           </mat-card-content>
         </mat-card>
       } @else {
+        <mat-card class="upload-card">
+          <mat-card-content class="empty-state">
+            <mat-icon color="primary" style="font-size: 48px; width: 48px; height: 48px;">folder_open</mat-icon>
+            <h3>{{projects().length}} Projects Found</h3>
+            <p>Create a project to start uploading images to RustFS.</p>
+            <button mat-raised-button color="primary" (click)="createProject()">
+              Create Project
+            </button>
+          </mat-card-content>
+        </mat-card>
         <div class="project-grid">
           @for (p of projects(); track p.id) {
             <mat-card class="project-card">
@@ -48,25 +58,25 @@ import { MatIconModule } from '@angular/material/icon';
       }
     </div>
   `,
-    styles: [`
+  styles: [`
     .empty-state { text-align: center; padding: 40px; }
     .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
   `]
 })
 export class ProjectListComponent implements OnInit {
-    private http = inject(HttpClient);
-    projects = signal<any[]>([]);
+  private http = inject(HttpClient);
+  projects = signal<any[]>([]);
 
-    ngOnInit() { this.load(); }
+  ngOnInit() { this.load(); }
 
-    load() {
-        this.http.get<any[]>('/api/proxy/projects/').subscribe(res => this.projects.set(res));
+  load() {
+    this.http.get<any[]>('/api/proxy/projects/').subscribe(res => this.projects.set(res));
+  }
+
+  createProject() {
+    const name = prompt('Project Name:');
+    if (name) {
+      this.http.post('/api/proxy/projects/', { name }).subscribe(() => this.load());
     }
-
-    createProject() {
-        const name = prompt('Project Name:');
-        if (name) {
-            this.http.post('/api/proxy/projects/', { name }).subscribe(() => this.load());
-        }
-    }
+  }
 }
