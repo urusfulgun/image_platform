@@ -6,13 +6,12 @@ import { MatGridListModule } from '@angular/material/grid-list';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatButtonModule } from '@angular/material/button'; // Added for the button
+import { MatButtonModule } from '@angular/material/button';
 import { UploadService } from '../../services/upload.service';
 
 @Component({
   selector: 'app-project-gallery',
   standalone: true,
-  // Added MatButtonModule to imports
   imports: [CommonModule, MatGridListModule, MatCardModule, MatIconModule, MatChipsModule, MatButtonModule],
   template: `
     <div class="gallery-view">
@@ -69,8 +68,25 @@ import { UploadService } from '../../services/upload.service';
   `,
   styles: [`
     .gallery-view { padding: 24px; }
-    .asset-card { width: 100%; height: 100%; overflow: hidden; }
-    .image-wrapper { position: relative; height: 100%; width: 100%; background: #2a2a2a; }
+    
+    /* FIX: Force card to be a flex container and occupy full tile height */
+    .asset-card { 
+      width: 100%; 
+      height: 100%; 
+      display: flex; 
+      flex-direction: column; 
+      overflow: hidden; 
+    }
+
+    /* FIX: image-wrapper grows to fill space, but doesn't push footer out */
+    .image-wrapper { 
+      position: relative; 
+      flex: 1; 
+      min-height: 0; /* Important for flex-grow in some browsers */
+      width: 100%; 
+      background: #2a2a2a; 
+    }
+
     .image-wrapper img { width: 100%; height: 100%; object-fit: cover; transition: opacity 0.3s; }
     .pending img { opacity: 0.3; filter: blur(4px); }
     
@@ -81,14 +97,14 @@ import { UploadService } from '../../services/upload.service';
     .spin { animation: rotate 2s linear infinite; }
     @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     
-    /* Updated Footer Styles */
     .footer-content { 
-      padding: 4px 8px; 
+      padding: 0 8px; 
       font-size: 12px; 
       display: flex; 
       align-items: center; 
       justify-content: space-between; 
-      height: 48px; /* Standard Material icon button height */
+      height: 48px; 
+      background: white; /* Ensures button is always visible over dark wrapper */
     }
 
     .filename { 
@@ -96,10 +112,12 @@ import { UploadService } from '../../services/upload.service';
       overflow: hidden; 
       text-overflow: ellipsis; 
       margin-right: 8px;
+      flex: 1; /* Allows text to take available space */
     }
 
     .download-btn {
-      transform: scale(0.8); /* Slightly smaller to fit better in the card footer */
+      flex-shrink: 0; /* Prevents the button from being squeezed */
+      transform: scale(0.8);
     }
   `]
 })
@@ -107,20 +125,15 @@ export class ProjectGalleryComponent implements OnInit {
   projectId = input.required<string>();
   private http = inject(HttpClient);
   private uploadService = inject(UploadService);
-  
   images = signal<any[]>([]);
 
   constructor() {
     this.uploadService.refreshGallery$
       .pipe(takeUntilDestroyed())
-      .subscribe(() => {
-        this.loadImages();
-      });
+      .subscribe(() => this.loadImages());
   }
 
-  ngOnInit() {
-    this.loadImages();
-  }
+  ngOnInit() { this.loadImages(); }
 
   loadImages() {
     const url = `http://localhost/api/proxy/projects/${this.projectId()}/images/preview`;
