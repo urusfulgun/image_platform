@@ -9,18 +9,35 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatButtonModule } from '@angular/material/button';
 import { UploadService } from '../../services/upload.service';
+import { DownloadService } from '../../services/download.service';
+import { MatProgressBarModule } from '@angular/material/progress-bar'; // Optional for progress UI
 import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of, map } from 'rxjs';
 
 @Component({
   selector: 'app-project-gallery',
   standalone: true,
-  imports: [CommonModule, MatGridListModule, MatCardModule, MatIconModule, MatChipsModule, MatButtonModule],
+  imports: [CommonModule, MatGridListModule, MatCardModule, MatIconModule, MatChipsModule, MatButtonModule, MatProgressBarModule],
   template: `
     <div class="gallery-view">
       <header>
         <h3>Project Assets</h3>
         <p class="subtitle">ID: {{ projectId() }}</p>
+        <div class="header-actions">
+        @if (images().length > 0) {
+          <button mat-flat-button 
+                  color="primary" 
+                  [disabled]="downloadService.isDownloading()"
+                  (click)="downloadAll()">
+            <mat-icon>{{ downloadService.isDownloading() ? 'sync' : 'archive' }}</mat-icon>
+            {{ downloadService.isDownloading() ? 'Bundling...' : 'Download All (ZIP)' }}
+          </button>
+        }
+      </div>
       </header>
+
+      @if (downloadService.isDownloading()) {
+        <mat-progress-bar mode="indeterminate" class="download-progress"></mat-progress-bar>
+      }
 
       <mat-grid-list [cols]="columnCount()" rowHeight="1:1" gutterSize="16px">
         @for (img of images(); track img.id) {
@@ -95,11 +112,46 @@ import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of, m
       .gallery-view { padding: 12px; }
       .footer-content { height: 40px; font-size: 11px; }
     }
+    /* Add to your component styles */
+    .gallery-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .download-progress {
+      margin-bottom: 16px;
+      border-radius: 4px;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px;
+      color: #666;
+    }
+
+    .empty-state mat-icon {
+      font-size: 48px;
+      width: 48px;
+      height: 48px;
+      margin-bottom: 16px;
+    }
   `]
 })
 export class ProjectGalleryComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly uploadService = inject(UploadService);
+  protected readonly downloadService = inject(DownloadService); // Inject our new service
   private readonly destroyRef = inject(DestroyRef);
   private readonly breakpointObserver = inject(BreakpointObserver);
 
@@ -133,7 +185,7 @@ export class ProjectGalleryComponent implements OnInit {
 
   deleteImage(imageId: string) {
     const url = `http://localhost/api/proxy/projects/${this.projectId()}/images/${imageId}`;
-    
+
     // Optimistic UI update or simple request handling
     this.http.delete(url)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -159,6 +211,21 @@ export class ProjectGalleryComponent implements OnInit {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe();
+  }
+
+  downloadAll() {
+    // 1. Prepare assets with POSIX paths
+    const assets = this.images()
+      .filter(img => img.status === 'OPTIMIZED')
+      .map(img => ({
+        url: img.processed_image_url,
+        // Using original_filename or a 'path' property to preserve POSIX structure
+        filename: img.path || img.original_filename
+      }));
+
+    if (assets.length > 0) {
+      this.downloadService.downloadAllDirectly(assets);
+    }
   }
 
   private fetchImages() {
