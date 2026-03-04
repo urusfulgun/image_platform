@@ -17,6 +17,7 @@ class AssetSettings(BaseAppSettings):
     kafka_consumer_group: str = "asset-service-group"
     user_event_topic: str = "keycloak-users"
     image_raw_uploaded_topic: str = "image.raw.uploaded"
+    image_deleted_topic: str = "image.all.deleted"
     image_raw_presign_link_generated_topic: str = "image.raw.uploading_link_generated"
 
     # S3 / RustFS

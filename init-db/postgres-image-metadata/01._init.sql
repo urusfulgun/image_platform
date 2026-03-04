@@ -28,6 +28,8 @@ CREATE TABLE image_metadata (
     file_size_bytes BIGINT,
     dimensions_px VARCHAR(20), -- e.g., '1920x1080'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NULL
+    deleted BOOLEAN DEFAULT FALSE
 );
 
 -- 4. Volatile Status Table (High volatility)

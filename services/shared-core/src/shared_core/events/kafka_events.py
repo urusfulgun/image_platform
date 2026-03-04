@@ -55,3 +55,11 @@ class CleanupRequestedEvent(BaseModel):
     image_id: uuid.UUID
     raw_s3_path: str
     occurred_at: datetime = Field(default_factory=get_utc_now)
+
+
+class ImageDeletedEvent(BaseModel):
+    image_id: uuid.UUID
+    project_id: uuid.UUID
+    raw_s3_path: str
+    processed_s3_path: str | None = None
+    preview_s3_path: str | None = None

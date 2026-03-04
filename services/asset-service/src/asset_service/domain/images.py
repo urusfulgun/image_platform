@@ -1,8 +1,10 @@
 """Image domain service."""
 
 import logging
+from typing import NamedTuple
 import uuid
 from asset_service.s3.client import get_s3_client
+from shared_core.utils.utc import get_utc_now
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,6 +15,12 @@ from shared_core.models.image import ImageSchemaPreview, RegisterImageRequest
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+class ImagesToDelete(NamedTuple):
+    raw_s3_path: str
+    processed_s3_path: str
+    preview_s3_path: str
 
 
 class ImageService:
@@ -138,12 +146,14 @@ class ImageService:
         return enriched_images
 
     async def list_for_project(self, project_id: uuid.UUID) -> list[ImageMetadataModel]:
-        result = await self.db.execute(
+        stmt = (
             select(ImageMetadataModel)
             .where(ImageMetadataModel.project_id == project_id)
+            .where(ImageMetadataModel.deleted == False)
             .options(selectinload(ImageMetadataModel.status))
             .order_by(ImageMetadataModel.created_at.desc())
         )
+        result = await self.db.execute(stmt)
         images = list(result.scalars().all())
         if images:
             image = images[0]
@@ -173,3 +183,41 @@ class ImageService:
         if preview_s3_path and image:
             image.preview_s3_path = preview_s3_path
         await self.db.commit()
+
+    async def delete(
+        self,
+        image_id: uuid.UUID,
+        project_id: uuid.UUID,
+    ) -> ImagesToDelete:
+        """
+        Soft-deletes the image and triggers an asynchronous cleanup via Kafka.
+        """
+        # 1. Fetch the image
+        stmt = select(ImageMetadataModel).where(
+            ImageMetadataModel.id == image_id,
+            ImageMetadataModel.project_id == project_id,
+            ImageMetadataModel.deleted == False,
+        )
+        result = await self.db.execute(stmt)
+        image = result.scalar_one_or_none()
+
+        if not image:
+            raise NotFoundError(f"Image {image_id} not found or already deleted.")
+
+        # 2. Soft Delete
+        image.deleted = True
+        image.deleted_at = get_utc_now()
+
+        # 3. Prepare the Kafka Event
+        # Include all paths so the cleanup service knows exactly what to purge
+        images_to_delete = ImagesToDelete(
+            raw_s3_path=image.raw_s3_path,
+            processed_s3_path=image.processed_s3_path,
+            preview_s3_path=image.preview_s3_path,
+        )
+
+        # 4. Commit and Publish
+        # We commit the DB change first. If this fails, the event is never sent.
+        await self.db.commit()
+
+        return images_to_delete

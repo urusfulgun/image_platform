@@ -2,6 +2,7 @@
 
 Mirrors the init-db/postgres-image-metadata/01._init.sql schema.
 """
+
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -28,7 +29,9 @@ class UserModel(Base):
 
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid7
+    )
     kc_sub: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), unique=True, nullable=False
     )
@@ -91,6 +94,12 @@ class ImageMetadataModel(Base):
         TIMESTAMP(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
+    deleted_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        default=None,
+        nullable=True
+    )
+    deleted: Mapped[bool] = mapped_column(default=False)
 
     project: Mapped["ProjectModel"] = relationship(back_populates="images")
     status: Mapped["ImageProcessingStatusModel"] = relationship(
