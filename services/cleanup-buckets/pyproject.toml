@@ -1,0 +1,30 @@
+[project]
+name = "cleanup-buckets"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "urusfulgun", email = "panterapardusspelaea48@gmail.com" }
+]
+requires-python = ">=3.14.2"
+dependencies = [
+    "aioboto3>=15.5.0",
+    "shared-core",
+    "types-aioboto3[essential]>=15.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-mock>=3.15.1",
+    "httpx>=0.28.1",
+]
+[project.scripts]
+cleanup-buckets = "cleanup_buckets:main"
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"
+[tool.uv.sources]
+shared-core = { path = "../shared-core", editable = true }

@@ -249,6 +249,35 @@ services:
     networks:
       - backend-net
 
+  cleanup-buckets-worker:
+    build:
+      context: .
+      dockerfile: docker/cleanup-buckets-worker.Dockerfile
+      target: production
+    container_name: cleanup-buckets-worker
+    restart: unless-stopped
+    environment:
+      # Kafka Config
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - INPUT_TOPIC=image.raw.uploaded
+      - SUCCESS_TOPIC=image.avif.ready
+      - DLQ_TOPIC=image.raw.failed
+      
+      # S3 / RustFS Config
+      - S3_ENDPOINT_URL=http://rustfs:9000
+      - S3_AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY:-minioadmin}
+      - S3_AWS_SECRET_ACCESS_KEY=${S3_SECRET_KEY:-minioadmin}
+      - RAW_BUCKET_NAME=raw-images
+      - PROCESSED_BUCKET_NAME=processed-images
+      
+      # Python Config
+      - PYTHONUNBUFFERED=1
+    networks:
+      - backend-net
+    depends_on:
+      - kafka
+      - rustfs
+
   image-processor:
     build:
       context: .
