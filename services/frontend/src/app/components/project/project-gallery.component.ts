@@ -1,8 +1,8 @@
-import { Component, OnInit, inject, signal, input, DestroyRef, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, input, DestroyRef } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout'; // Added for responsiveness
+import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { MatGridListModule } from '@angular/material/grid-list';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -43,16 +43,25 @@ import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of, m
                     {{ img.original_filename }}
                   </span>
 
-                  @if (img.status === 'OPTIMIZED') {
-                    <a mat-icon-button 
-                       [href]="img.processed_image_url" 
-                       [download]="img.original_filename"
-                       target="_blank"
-                       color="primary"
-                       class="download-btn">
-                      <mat-icon>download</mat-icon>
-                    </a>
-                  }
+                  <div class="actions">
+                    @if (img.status === 'OPTIMIZED') {
+                      <a mat-icon-button 
+                         [href]="img.processed_image_url" 
+                         [download]="img.original_filename"
+                         target="_blank"
+                         color="primary"
+                         class="action-btn">
+                        <mat-icon>download</mat-icon>
+                      </a>
+                    }
+                    
+                    <button mat-icon-button 
+                            color="warn" 
+                            class="action-btn"
+                            (click)="deleteImage(img.id)">
+                      <mat-icon>delete_outline</mat-icon>
+                    </button>
+                  </div>
                 </div>
               </mat-card-footer>
             </mat-card>
@@ -79,9 +88,9 @@ import { Subject, timer, switchMap, takeUntil, tap, takeWhile, catchError, of, m
     @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .footer-content { padding: 0 8px; font-size: 12px; display: flex; align-items: center; justify-content: space-between; height: 48px; background: white; }
     .filename { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 8px; flex: 1; }
-    .download-btn { flex-shrink: 0; transform: scale(0.8); }
+    .actions { display: flex; gap: 4px; align-items: center; }
+    .action-btn { flex-shrink: 0; transform: scale(0.8); }
 
-    /* Extra safety for very small screens */
     @media (max-width: 600px) {
       .gallery-view { padding: 12px; }
       .footer-content { height: 40px; font-size: 11px; }
@@ -98,10 +107,6 @@ export class ProjectGalleryComponent implements OnInit {
   images = signal<any[]>([]);
   private stopPolling$ = new Subject<void>();
 
-  /**
-   * Responsive Column Logic:
-   * Maps screen size breakpoints to the number of columns.
-   */
   columnCount = toSignal(
     this.breakpointObserver
       .observe([Breakpoints.XSmall, Breakpoints.Small, Breakpoints.Medium, Breakpoints.Large])
@@ -110,7 +115,7 @@ export class ProjectGalleryComponent implements OnInit {
           if (result.breakpoints[Breakpoints.XSmall]) return 1;
           if (result.breakpoints[Breakpoints.Small]) return 2;
           if (result.breakpoints[Breakpoints.Medium]) return 3;
-          return 4; // Large and up
+          return 4;
         })
       ),
     { initialValue: 4 }
@@ -124,6 +129,21 @@ export class ProjectGalleryComponent implements OnInit {
 
   ngOnInit() {
     this.startPolling();
+  }
+
+  deleteImage(imageId: string) {
+    const url = `http://localhost/api/proxy/projects/${this.projectId()}/images/${imageId}`;
+    
+    // Optimistic UI update or simple request handling
+    this.http.delete(url)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          // Remove from local signal to provide immediate feedback
+          this.images.update(imgs => imgs.filter(i => i.id !== imageId));
+        },
+        error: (err) => console.error('Delete failed', err)
+      });
   }
 
   startPolling() {
