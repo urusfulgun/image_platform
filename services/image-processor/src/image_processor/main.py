@@ -135,6 +135,7 @@ class KafkaImageWorker:
                 project_id=event.project_id,
                 processed_s3_path=main_img["path"],
                 preview_s3_path=preview_img["path"],
+                processed_format='avif',
             )
             await self.producer.send_and_wait(
                 self.SUCCESS_TOPIC, ready_event.model_dump(mode="json")

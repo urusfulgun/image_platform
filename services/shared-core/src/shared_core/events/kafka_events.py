@@ -42,6 +42,7 @@ class ImageAvifReadyEvent(BaseModel):
     project_id: uuid.UUID
     processed_s3_path: str
     preview_s3_path: str
+    processed_format: str
     occurred_at: datetime = Field(default_factory=get_utc_now)
 
 

@@ -26,6 +26,7 @@ class ImageSchema(BaseModel):
     status: ImageStatus = ImageStatus.PENDING
     retry_count: int = 0
     last_error_log: Optional[str] = None
+    processed_format: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -41,6 +42,7 @@ class ImageSchemaPreview(BaseModel):
     created_at: datetime
     raw_image_url: str | None
     processed_image_url: str | None
+    processed_format: str | None
 
 
     model_config = {"from_attributes": True}

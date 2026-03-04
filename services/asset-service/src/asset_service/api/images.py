@@ -47,6 +47,7 @@ def get_image_schema_from_model(image_model: ImageMetadataModel) -> ImageSchema:
         retry_count=image_model.status.retry_count,
         last_error_log=image_model.status.last_error_log,
         created_at=image_model.created_at,
+        processed_format=image_model.processed_format,
     )
     return image_schema
 

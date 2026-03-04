@@ -140,6 +140,7 @@ class ImageService:
                     s3_client,
                     img,
                 ),
+                "processed_format": img.processed_format,
             }
             enriched_images.append(img_data)
 
@@ -166,6 +167,7 @@ class ImageService:
         new_status: str,
         processed_s3_path: str | None = None,
         preview_s3_path: str | None = None,
+        processed_format: str | None = None,
         error_log: str | None = None,
     ) -> None:
         """Update the processing status of an image."""
@@ -180,6 +182,8 @@ class ImageService:
             image: ImageMetadataModel = await self.db.get(ImageMetadataModel, image_id)
             if image:
                 image.processed_s3_path = processed_s3_path
+        if processed_format and image:
+            image.processed_format = processed_format
         if preview_s3_path and image:
             image.preview_s3_path = preview_s3_path
         await self.db.commit()

@@ -217,11 +217,22 @@ export class ProjectGalleryComponent implements OnInit {
     // 1. Prepare assets with POSIX paths
     const assets = this.images()
       .filter(img => img.status === 'OPTIMIZED')
-      .map(img => ({
+      .map(img => {
+      const baseName = img.path || img.original_filename;
+      const newExt = img.processed_format.toLowerCase();
+      
+      // 1. Remove the old extension using regex
+      // This matches the last '.' and everything after it, but only at the end of the string
+      const nameWithoutExt = baseName.replace(/\.[^/.]+(?=$)/, '');
+      
+      // 2. Append the new extension
+      const finalFilename = `${nameWithoutExt}.${newExt}`;
+
+      return {
         url: img.processed_image_url,
-        // Using original_filename or a 'path' property to preserve POSIX structure
-        filename: img.path || img.original_filename
-      }));
+        filename: finalFilename
+      };
+    });
 
     if (assets.length > 0) {
       this.downloadService.downloadAllDirectly(assets);
