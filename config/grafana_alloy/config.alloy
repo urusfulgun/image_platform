@@ -1,3 +1,7 @@
+livedebugging {
+  enabled = true
+}
+
 // 1. Discover all Docker containers
 discovery.docker "all_containers" {
   host = "unix:///var/run/docker.sock"
@@ -22,13 +26,32 @@ loki.relabel "journal_relabel" {
   }
 }
 
-// 4. Processing: DROP noisy Kafka heartbeat logs
+// 4. Processing: Conditional DROP based on Service Name
 loki.process "filter_logs" {
   forward_to = [loki.write.local_loki.receiver]
 
-  // Rule: Identify the heartbeat lines using Regex
-  stage.drop {
-    expression = "(?i).*(heartbeat|group coordinator|fetch session).*"
+  // First, target ONLY the kafka container
+  stage.match {
+    selector = "{service_name=\"kafka\"}"
+
+    // Inside this match, drop the specific heartbeat lines
+    stage.drop {
+      expression = "(?i).*(heartbeat|fetch session|group coordinator).*"
+    }
+  }
+
+  // You can add more match blocks here for other services
+  stage.match {
+    selector = "{service_name=\"debezium-connector\"}"
+    stage.drop {
+      expression = ".*Checking for change events.*"
+    }
+  }
+  stage.match {
+    selector = "{service_name=\"nginx-proxy\"}"
+    stage.drop {
+      expression = ".*Checking for change events.*"
+    }
   }
 }
 

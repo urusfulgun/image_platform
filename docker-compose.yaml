@@ -248,7 +248,7 @@ services:
     networks:
       - backend-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U asset_admin"]
+      test: ["CMD-SHELL", "pg_isready -U asset_metadata"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -460,10 +460,18 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       - backend-net
+    healthcheck:
+      test: wget --quiet --tries=1 --output-document=- http://localhost:3100/ready | grep -q -w ready || exit 1
+      start_period: 20s
+      interval: 10s
+      timeout: 1s
+      retries: 12  
 
   alloy:
     image: grafana/alloy:v1.14.0
+    hostname: srv-test-1
     container_name: alloy
+    # user: root
     volumes:
       # Map the local config file to the container path
       - ./config/grafana_alloy/config.alloy:/etc/alloy/config.alloy:ro
@@ -471,7 +479,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Map the log directory (where Docker stores container output)
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+      - ./persistent_data/alloy:/var/lib/alloy/data # Persists the write-ahead log (WAL)
+    command: [
+      "run",
+      "--server.http.listen-addr=0.0.0.0:12345",
+      "--storage.path=/var/lib/alloy/data",
+      "--stability.level=experimental",
+      "--disable-reporting",
+      "/etc/alloy/config.alloy"
+    ]
     ports:
       - "12345:12345" # Alloy UI for debugging pipelines
     networks:
@@ -486,10 +502,17 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./persistent_data/grafana:/var/lib/grafana
     depends_on:
       - loki
     networks:
       - backend-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   backend-net:
