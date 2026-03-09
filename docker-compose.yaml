@@ -449,6 +449,47 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+  
+  # --- MONITORING: LOGS & METRICS ---
+
+  loki:
+    image: grafana/loki:main-e569e10
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - backend-net
+
+  alloy:
+    image: grafana/alloy:v1.14.0
+    container_name: alloy
+    volumes:
+      # Map the local config file to the container path
+      - ./config/grafana_alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Map the Docker socket so Alloy can discover other containers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Map the log directory (where Docker stores container output)
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    ports:
+      - "12345:12345" # Alloy UI for debugging pipelines
+    networks:
+      - backend-net
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:12.3
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - loki
+    networks:
+      - backend-net
 
 networks:
   backend-net:

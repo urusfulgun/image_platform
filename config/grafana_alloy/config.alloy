@@ -1,0 +1,20 @@
+// 1. Discover all Docker containers running on this host
+discovery.docker "all_containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// 2. Collect logs from the discovered containers
+loki.source.docker "docker_logs" {
+  // THIS IS THE MISSING LINE:
+  host      = "unix:///var/run/docker.sock" 
+  
+  targets    = discovery.docker.all_containers.targets
+  forward_to = [loki.write.local_loki.receiver]
+}
+
+// 3. Define the destination (Loki)
+loki.write "local_loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
