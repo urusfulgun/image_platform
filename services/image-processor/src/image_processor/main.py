@@ -7,6 +7,8 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from aiobotocore.config import AioConfig
 from PIL import Image, ImageFile
 import aioboto3
+from fastapi import FastAPI, Response, status
+import uvicorn
 from shared_core.events.kafka_events import (
     DLQImageProcessingEventPayload,
     ImageAvifReadyEvent,  # Note: You may need to update this schema to include preview_s3_path
@@ -19,6 +21,29 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("KafkaImageProcessor")
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+# --- FastAPI Setup ---
+app = FastAPI()
+worker_instance = None  # Global reference for the health check to inspect
+
+
+@app.get("/health")
+async def health_check():
+    """
+    Checks if the Kafka consumer and producer are still connected.
+    """
+    if not worker_instance:
+        return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+    
+    # Check if Kafka components are running
+    # Note: _closed is an internal state, but useful for basic liveness
+    is_consumer_ok = worker_instance.consumer is not None
+    is_producer_ok = worker_instance.producer is not None
+    
+    if is_consumer_ok and is_producer_ok:
+        return {"status": "healthy", "worker": "active"}
+    
+    return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
 class KafkaImageWorker:
@@ -171,6 +196,8 @@ class KafkaImageWorker:
 
 # --- Main Entry ---
 async def main():
+    global worker_instance
+
     s3_settings = {
         "endpoint_url": "http://rustfs:9000",
         "aws_access_key_id": "OAhzGogEY7X61ZwjnSmH",
@@ -179,30 +206,47 @@ async def main():
         "region_name": "us-east-1",
     }
 
-    worker = KafkaImageWorker(
+    worker_instance = KafkaImageWorker(
         kafka_bootstrap="kafka:9092",
         s3_config=s3_settings,
         raw_bucket="raw-images",
         processed_bucket="processed-images",
     )
 
+    # Setup FastAPI server to run in the background
+    config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="error")
+    server = uvicorn.Server(config)
+
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
 
-    worker_task = asyncio.create_task(worker.run())
-
     try:
-        await stop_event.wait()
-        logger.info("Shutdown signal received.")
+        # Structured Concurrency: TaskGroup manages the lifetime of all tasks
+        async with asyncio.TaskGroup() as tg:
+            w_task = tg.create_task(worker_instance.run())
+            _ = tg.create_task(server.serve())
+            
+            # Wait until a shutdown signal is received
+            await stop_event.wait()
+            logger.info("Shutdown signal received.")
+            # Signal the server and worker to wind down
+            server.should_exit = True
+            logger.info("Initiating graceful shutdown...")
+            w_task.cancel()
+            
+            # When we exit this block, all remaining tasks (worker/server) 
+            # are automatically cancelled and awaited.
+    except* asyncio.CancelledError:
+        # This is expected when we cancel w_task
+        pass
+    except* Exception as eg:
+        # Python 3.11+ ExceptionGroup handling
+        for error in eg.exceptions:
+            logger.error(f"Task error: {error}")
     finally:
-        worker_task.cancel()
-        try:
-            await worker_task
-        except asyncio.CancelledError:
-            pass
-        logger.info("Worker stopped gracefully.")
+        logger.info("Worker and Health server stopped gracefully.")
 
 
 if __name__ == "__main__":
