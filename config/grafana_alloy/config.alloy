@@ -3,27 +3,36 @@ discovery.docker "all_containers" {
   host = "unix:///var/run/docker.sock"
 }
 
-// 2. Relabeling Block: This "cleans" the metadata
-loki.relabel "journal_relabel" {
-  forward_to = [loki.write.local_loki.receiver]
+// 2. Collect logs and send to Relabeling
+loki.source.docker "docker_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.all_containers.targets
+  forward_to = [loki.relabel.journal_relabel.receiver]
+}
 
-  // Rule: Take the Docker container name metadata
+// 3. Relabeling: Clean up service names
+loki.relabel "journal_relabel" {
+  forward_to = [loki.process.filter_logs.receiver] // Now pointing to Process
+
   rule {
     source_labels = ["__meta_docker_container_name"]
-    regex         = "/(.*)"   // Docker names start with '/', this removes it
+    regex         = "/(.*)"
     target_label  = "service_name"
     replacement   = "$1"
   }
 }
 
-// 3. Collect logs and send them to the RELABEL block first
-loki.source.docker "docker_logs" {
-  host       = "unix:///var/run/docker.sock"
-  targets    = discovery.docker.all_containers.targets
-  forward_to = [loki.relabel.journal_relabel.receiver] // Now pointing to relabel
+// 4. Processing: DROP noisy Kafka heartbeat logs
+loki.process "filter_logs" {
+  forward_to = [loki.write.local_loki.receiver]
+
+  // Rule: Identify the heartbeat lines using Regex
+  stage.drop {
+    expression = "(?i).*(heartbeat|group coordinator|fetch session).*"
+  }
 }
 
-// 4. Define the final destination (Loki)
+// 5. Define final destination (Loki)
 loki.write "local_loki" {
   endpoint {
     url = "http://loki:3100/loki/api/v1/push"
