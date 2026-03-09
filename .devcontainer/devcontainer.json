@@ -4,14 +4,21 @@
 	"name": "Image Platform",
 	// Update the 'dockerComposeFile' list if you have more compose files or use different names.
 	// The .devcontainer/docker-compose.yml file contains any overrides you need/want to make.
-	"image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+	// "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+	"dockerComposeFile": "../.devcontainer/docker-compose.yaml",
 	// The 'service' property is the name of the service for the container that VS Code should
 	// use. Update this value and .devcontainer/docker-compose.yml to the real service name.
-	// "service": "devcontainer",
+	"service": "devcontainer",
 	// The optional 'workspaceFolder' property is the path VS Code should open by default when
 	// connected. This is typically a file mount in .devcontainer/docker-compose.yml
-	// "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}"
+	// "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
 	"workspaceFolder": "/workspaces/image_platform",
+	"remoteEnv": {
+        "LOCAL_WORKSPACE_FOLDER_BASENAME": "${localWorkspaceFolderBasename}"
+    },
+    "containerEnv": {
+        "LOCAL_WORKSPACE_FOLDER_BASENAME": "${localWorkspaceFolderBasename}"
+    },
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	"features": {
 		"ghcr.io/devcontainers/features/common-utils:1": {}

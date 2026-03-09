@@ -1,0 +1,12 @@
+services:
+  devcontainer:
+    image: mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+    volumes:
+      - ..:/workspaces/image_platform:cached
+    networks:
+      - backend-net  # Attach the dev service here
+    tty: true
+
+networks:
+  backend-net:
+    external: true  # Use 'true' if the network was created outside this file

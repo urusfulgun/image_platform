@@ -94,6 +94,9 @@ app.add_middleware(
     # expose_headers=["DPoP"],  # If you need Angular to read DPoP headers
 )
 
+@app.get("/health", tags=["ops"])
+async def health():
+    return JSONResponse({"status": "ok"})
 
 # ---------------------------------------------------------------------------
 # Auth routes

@@ -11,7 +11,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # --- STAGE 2: Production ---
 FROM base AS production
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 && rm -rf /var/lib/apt/lists/*
+    libpq5 curl && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r app && useradd -r -g app app
 RUN chown app:app /app
