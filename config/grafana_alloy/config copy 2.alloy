@@ -1,0 +1,32 @@
+livedebugging {
+  enabled = true
+}
+
+// 1. Basic Discovery
+discovery.docker "all_containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// 2. Simple Source (Note the 'host' is back in)
+loki.source.docker "docker_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.all_containers.targets
+  forward_to = [loki.relabel.simple_label.receiver]
+}
+
+// 3. One single relabel rule - no complex regex
+loki.relabel "simple_label" {
+  forward_to = [loki.write.local_loki.receiver]
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    target_label  = "container"
+  }
+}
+
+// 4. Direct Write
+loki.write "local_loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

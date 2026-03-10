@@ -1,62 +1,51 @@
 livedebugging {
   enabled = true
 }
-
-// 1. Discover all Docker containers
-discovery.docker "all_containers" {
+// 1. Connect to Docker via the mounted socket to find all running containers
+discovery.docker "local" {
   host = "unix:///var/run/docker.sock"
 }
 
-// 2. Collect logs and send to Relabeling
-loki.source.docker "docker_logs" {
-  host       = "unix:///var/run/docker.sock"
-  targets    = discovery.docker.all_containers.targets
-  forward_to = [loki.relabel.journal_relabel.receiver]
-}
+// 2. Extract useful labels from Docker and point Alloy to the physical log files
+discovery.relabel "local" {
+  targets = discovery.docker.local.targets
 
-// 3. Relabeling: Clean up service names
-loki.relabel "journal_relabel" {
-  forward_to = [loki.process.filter_logs.receiver] // Now pointing to Process
+  // Grab the Docker Compose service name (e.g., 'asset-service', 'kafka')
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
 
+  // Grab the raw container name, stripping the leading slash Docker adds
   rule {
     source_labels = ["__meta_docker_container_name"]
     regex         = "/(.*)"
-    target_label  = "service_name"
-    replacement   = "$1"
+    target_label  = "container"
+  }
+
+  // Construct the absolute path to the Docker json-file log on disk
+  rule {
+    source_labels = ["__meta_docker_container_id"]
+    target_label  = "__path__"
+    replacement   = "/var/lib/docker/containers/$1/$1-json.log"
   }
 }
 
-// 4. Processing: Conditional DROP based on Service Name
-loki.process "filter_logs" {
-  forward_to = [loki.write.local_loki.receiver]
-
-  // First, target ONLY the kafka container
-  stage.match {
-    selector = "{service_name=\"kafka\"}"
-
-    // Inside this match, drop the specific heartbeat lines
-    stage.drop {
-      expression = "(?i).*(heartbeat|fetch session|group coordinator).*"
-    }
-  }
-
-  // You can add more match blocks here for other services
-  stage.match {
-    selector = "{service_name=\"debezium-connector\"}"
-    stage.drop {
-      expression = ".*Checking for change events.*"
-    }
-  }
-  stage.match {
-    selector = "{service_name=\"nginx-proxy\"}"
-    stage.drop {
-      expression = ".*Checking for change events.*"
-    }
-  }
+// 3. Read the actual log files from the mounted directory
+loki.source.file "local" {
+  targets    = discovery.relabel.local.output
+  forward_to = [loki.process.parse_docker.receiver]
 }
 
-// 5. Define final destination (Loki)
-loki.write "local_loki" {
+// 4. Parse the Docker JSON wrapper to extract the raw log line, stream (stdout/stderr), and timestamp
+loki.process "parse_docker" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.docker { }
+}
+
+// 5. Send the clean, labeled logs to the Loki container
+loki.write "default" {
   endpoint {
     url = "http://loki:3100/loki/api/v1/push"
   }
