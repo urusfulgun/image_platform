@@ -117,7 +117,7 @@ Worker Layer: Scale the Image Processing Worker horizontally depending on the CP
     └── email-notification/  # Notification Worker + Pytest
         ├── src/
         └── tests/           # Pytest suite
-
+```mermaid
 graph TD
     subgraph Client_Layer [Client & Edge]
         UA([User Browser])
@@ -177,5 +177,5 @@ graph TD
     KAF -->|Cleanup Events| CW
     CW -->|Prune Metadata Events| KAF
     CW <-->|Delete Objects| RFS
-
+```
 
