@@ -95,6 +95,7 @@ Core Services: Spin up Kafka and RustFS.
 Application Layer: Deploy the BFF and AssetService. The BFF must share the same root domain as the Angular app to allow the secure cookie to work.
 Worker Layer: Scale the Image Processing Worker horizontally depending on the CPU load of the AVIF conversions.
 
+```text
 /image-platform
 ├── docker/                  # Dockerfiles for all services (Python 3.14.2 base)
 ├── init-db/                 # SQL scripts for AssetService schema
@@ -117,6 +118,7 @@ Worker Layer: Scale the Image Processing Worker horizontally depending on the CP
     └── email-notification/  # Notification Worker + Pytest
         ├── src/
         └── tests/           # Pytest suite
+```
 ```mermaid
 graph TD
     subgraph Client_Layer [Client & Edge]
