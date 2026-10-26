@@ -7,7 +7,7 @@ Items run in order within each phase. Characterization tests come first so that 
 ## Phase 1: Foundation
 
 - [x] F1 [M] Characterization tests for the asset-service API: projects, presign, delete and the RustFS callback
-- [ ] F2 [M] Characterization tests for the BFF: login, callback, `/me` and the proxy, including current header forwarding
+- [x] F2 [M] Characterization tests for the BFF: login, callback, `/me` and the proxy, including current header forwarding
 - [ ] F3 [S] Characterization tests for `rs_dpop` token and DPoP validation
 - [ ] F4 [M] First tests for the email-notification and cleanup-buckets workers
 - [ ] F5 [S] Shared root `ruff.toml`, with existing findings fixed
@@ -25,7 +25,7 @@ Items run in order within each phase. Characterization tests come first so that 
 
 ## Phase 2: Refactors
 
-- [ ] R1 [M] Close the `X-User-Sub` impersonation hole: identity comes from the validated token's `sub`, and the proxy strips client identity and DPoP headers
+- [ ] R1 [M] Close the `X-User-Sub` impersonation hole: identity comes from the validated token's `sub`, and the proxy strips client identity, DPoP and `Cookie` headers
 - [ ] R2 [M] Load secrets from files or env; remove the hardcoded BFF client secret, S3 keys, webhook token and DB URL
 - [ ] R3 [S] Stop logging tokens, cookies, PKCE values and full request headers
 - [ ] R4 [S] RustFS webhook auth: secret from env, constant-time compare, 403 on malformed headers
@@ -41,6 +41,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [ ] R14 [S] Poison messages and Debezium tombstones no longer kill consumers
 - [ ] R15 [M] Idempotent image processing with deterministic output keys (no orphans or duplicate emails on redelivery)
 - [ ] R16 [M] Frontend auth cleanup: drop the `Bearer null` interceptor, use relative API URLs, add route guards
+- [ ] R17 [S] BFF proxy filters upstream response headers (hop-by-hop, `content-encoding`/`content-length`) instead of copying them verbatim
 
 ## Phase 3: New features
 
