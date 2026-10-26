@@ -4,7 +4,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Image Platform: users create projects, upload images straight to S3 (RustFS), and background workers convert them to AVIF and email a notification when they're done. It's a polyglot monorepo. The Python services live under `services/` and the Angular SPA lives in `services/frontend`. Everything runs together through `docker-compose.yaml` on the `image-platform-network` network, and the devcontainer joins that network too, so service hostnames such as `kafka`, `rustfs` and `keycloak` resolve from inside it. `plan.md` holds the original design brief: use cases, pipeline stages and DB plan.
+Image Platform: users create projects, upload images straight to S3 (RustFS), and background workers convert them to AVIF and email a notification when they're done. Polyglot monorepo run through `docker-compose.yaml` on the `image-platform-network` network. The devcontainer joins that network, so hostnames such as `kafka`, `rustfs` and `keycloak` resolve from inside it. `plan.md` holds the original design brief.
+
+## Product docs
+
+- @docs/product/mission.md
+- @docs/product/roadmap.md
+- @docs/product/tech-stack.md
+
+## Workflow rule
+
+Every non-trivial change starts with a spec in docs/specs/YYYY-MM-DD-<slug>/ containing spec.md and tasks.md.
+
+## Folder structure
+
+```
+services/
+  shared-core/         library (DTOs, security schemas, Kafka/Debezium events, errors, S3 key helpers)
+  asset-service/       FastAPI on Granian: projects, images, pre-signed URLs, RustFS callback, user sync
+  bff-token-handler/   FastAPI on Granian: OAuth BFF, sessions in Redis, DPoP proxy to asset-service
+  image-processor/     worker: raw image -> AVIF + preview
+  email-notification/  worker: SMTP to Mailpit on image.avif.ready
+  cleanup-buckets/     worker: prunes raw objects
+  frontend/            Angular 21 SPA (Bun)
+docker/                one Dockerfile per service (build context is the repo root)
+config/                nginx-proxy, debezium (register-connectors.sh), grafana_alloy
+init-db/               SQL run on first Postgres init (no migrations)
+secrets/, persistent_data/   gitignored, required at runtime (realm import, DB passwords, BFF client secret)
+```
 
 ## Commands
 
@@ -17,19 +44,19 @@ make status
 make clean     # docker compose down -v (wipes volumes)
 docker compose up -d --build asset-service   # rebuild a single service
 ```
-Useful UIs: nginx entrypoint `http://localhost` (port 80), Keycloak `:8080`, Kafka UI `:8081`, Debezium Connect `:8083`, RustFS `:9000`/console `:9001`, Mailpit `:8025`, pgAdmin `:8888`.
+UIs: nginx `http://localhost` (80), Keycloak `:8080`, Kafka UI `:8081`, Debezium Connect `:8083`, RustFS `:9000`/console `:9001`, Mailpit `:8025`, pgAdmin `:8888`.
 
 ### Python services (uv, Python ≥ 3.14.2)
-Each service is its own uv project with its own `.venv` and `uv.lock`. Run commands from the service directory:
+Each service is its own uv project with its own `.venv` and `uv.lock`. Run from the service directory:
 ```bash
 cd services/<service>
 uv sync --extra dev                          # test deps are an optional extra named "dev", not a dependency group
 uv run --extra dev pytest                    # whole suite
 uv run --extra dev pytest tests/test_logout.py::test_name -q   # single test
 ruff check . && ruff format .                # lint/format (ruff installed as a uv tool)
-mypy --strict src                            # editor runs mypy in --strict mode
+mypy --strict src
 ```
-Async tests use `@pytest.mark.asyncio` explicitly, since no `asyncio_mode` is configured. Tests mock Redis, the DB session, Kafka and S3 with `AsyncMock`/`pytest-mock`. They don't need the running stack.
+Async tests use `@pytest.mark.asyncio` explicitly (no `asyncio_mode` configured). Tests mock Redis, DB, Kafka and S3 with `AsyncMock`/`pytest-mock` and don't need the running stack.
 
 ### Frontend (Angular 21 + Bun)
 ```bash
@@ -42,32 +69,16 @@ bun run e2e       # Playwright (e2e/), run `bun run e2e:install` first
 ```
 Prettier config is in `package.json`: printWidth 100, single quotes.
 
-## Architecture
+## Key conventions
 
-### Request path and security (BFF Token Handler pattern)
-`Browser → nginx-proxy → { /api/* → bff-token-handler, /auth/* → keycloak, else → SPA }`.
-- nginx strips the `/api` prefix, so BFF routes are `/login`, `/authorization-code/callback`, `/logout`, `/me` and `/proxy/{path}`.
-- **The browser never holds OAuth tokens.** The BFF is a confidential Keycloak client (`bff-client`). It runs Authorization Code + PKCE, with the PKCE verifier stored in Redis by `state`. It keeps the `TokenSet` and the DPoP key pair in Redis under a random session id and sets an HttpOnly, SameSite=Strict `sid` cookie. Cookie attributes must stay identical between `set_cookie` and `delete_cookie`.
-- Tokens are **DPoP-bound**. The BFF generates an EC key pair at startup (`app.state.ec_key_pair`), and every upstream call to AssetService gets a fresh DPoP proof with an `ath` claim (`bff_token_handler/proxy/reverse_proxy.py`). The resource-server-side DPoP validation helper is in `shared_core/utils/endpoint/rs_dpop.py`.
-- AssetService currently identifies the user from the `X-User-Sub` header (`asset_service/api/deps.py`). It then resolves a local **shadow user** by `kc_sub`, and returns 404 "User not synced yet" if that user hasn't arrived through the sync below.
-
-### Shadow-user sync (CDC)
-Keycloak Postgres runs with `wal_level=logical`. `debezium-configurator` runs `config/debezium/register-connectors.sh`, which registers a connector on `public.user_entity`. The connector unwraps and reroutes changes to the Kafka topic **`keycloak-users`**. AssetService consumes that topic (`asset_service/kafka/consumer.py`, `user_sync_handler.py`) and upserts `UserModel` rows. The `register-connectors copy*.sh` files are scratch variants, and the compose file only mounts `register-connectors.sh`.
-
-### Image pipeline (Kafka topics)
-1. AssetService issues **pre-signed S3 PUT URLs**, and the browser uploads directly to RustFS bucket `raw-images`.
-2. A RustFS webhook calls `POST /callback/rustfs` on AssetService (`api/s3_callbacks.py`). `ObjectCreated` publishes `image.raw.uploaded`. `ObjectRemoved` marks the image deleted in the DB.
-3. `image-processor` consumes `image.raw.uploaded`. It converts the image to AVIF plus a preview with Pillow, writes both to `processed-images`, and publishes `image.avif.ready`. Failures go to the DLQ `image.raw.failed`.
-4. `image.avif.ready` is consumed by AssetService (`lifespans/image_status.py`, which sets status `OPTIMIZED` and stores the paths), by `email-notification` (SMTP to Mailpit) and by `cleanup-buckets` (prunes raw objects). AssetService also emits `image.all.deleted` for deletions.
-
-All event payloads are Pydantic models in `shared_core/events/kafka_events.py`. When you change an event, update its producers and consumers together.
-
-### Service internals
-- **shared-core** is a library, not a service. Every other Python service pulls it in as an editable path dependency (`[tool.uv.sources] shared-core = { path = "../shared-core", editable = true }`). It holds the DTOs, security schemas (`TokenSet`, `UserSession`, `KeyPair`), Debezium event schemas, error types and S3 key helpers. Changes here affect every service.
-- **asset-service** (FastAPI on Granian) is layered as `api/` (routers + `deps.py`) → `dependencies/` (DI providers) → `domain/` (`ProjectService`, `ImageService`) → `db/` (async SQLAlchemy + asyncpg). Startup resources such as the Kafka consumers/producer and the S3 client are registered as named async context managers on a custom `LifespanManager` in `lifespans/hub.py`. Add new background resources there rather than in `main.py`.
-- **bff-token-handler** (FastAPI on Granian) keeps everything on `app.state`: the Redis session store, the PKCE verifier store, the Keycloak client and the DPoP key pair. All of it is created in `lifespan` in `main.py`.
-- **Workers** (`image-processor`, `email-notification`, `cleanup-buckets`) are aiokafka consumer loops with a small FastAPI `/health` endpoint.
-- **DB schema** for AssetService is created by `init-db/postgres-image-metadata/*.sql` on the container's first init. There are no migrations, so a schema change needs the SQL and `db/models.py` updated together, plus a fresh volume.
-
-### Docker builds
-The build context is always the repo root. Each Python Dockerfile copies `services/shared-core` next to the service so the relative path dependency resolves, then runs `uv sync --frozen --no-dev`. Keep `uv.lock` in sync (`uv lock`) after changing dependencies, or the image build fails. `persistent_data/` and `secrets/` are gitignored but required at runtime: the Keycloak realm import, the DB password secrets and the BFF client secret all live in `secrets/`.
+- **Request path:** `Browser → nginx-proxy → { /api/* → bff-token-handler, /auth/* → keycloak, else → SPA }`. nginx strips `/api`, so BFF routes are `/login`, `/authorization-code/callback`, `/logout`, `/me`, `/proxy/{path}`.
+- **BFF Token Handler:** the browser never holds OAuth tokens. The BFF (confidential client `bff-client`) runs Auth Code + PKCE, stores the `TokenSet` and DPoP key pair in Redis under a random session id, and sets an HttpOnly, SameSite=Strict `sid` cookie. Cookie attributes must stay identical between `set_cookie` and `delete_cookie`. Everything lives on `app.state`, created in `lifespan` in `main.py`.
+- **DPoP:** every upstream call to AssetService gets a fresh proof with an `ath` claim (`bff_token_handler/proxy/reverse_proxy.py`). RS-side validation helper: `shared_core/utils/endpoint/rs_dpop.py`.
+- **Shadow users:** AssetService identifies the user via `X-User-Sub` (`asset_service/api/deps.py`) and resolves a local `UserModel` by `kc_sub`, returning 404 "User not synced yet" if missing. Users arrive by CDC: Debezium on Keycloak `public.user_entity` → Kafka topic `keycloak-users` → `asset_service/kafka/consumer.py` / `user_sync_handler.py`. Only `register-connectors.sh` is mounted; the `copy*` variants are scratch.
+- **Image pipeline topics:** pre-signed PUT to bucket `raw-images` → RustFS webhook `POST /callback/rustfs` (`api/s3_callbacks.py`) → `image.raw.uploaded` → image-processor writes to `processed-images` and emits `image.avif.ready` (failures to DLQ `image.raw.failed`) → consumed by AssetService (`lifespans/image_status.py`, status `OPTIMIZED`), email-notification and cleanup-buckets. Deletions emit `image.all.deleted`.
+- **Events:** all payloads are Pydantic models in `shared_core/events/kafka_events.py`. Change producers and consumers together.
+- **shared-core** is an editable path dependency of every Python service (`[tool.uv.sources] shared-core = { path = "../shared-core", editable = true }`). Changes affect every service.
+- **asset-service layering:** `api/` → `dependencies/` → `domain/` (`ProjectService`, `ImageService`) → `db/` (async SQLAlchemy + asyncpg). Register background resources (Kafka, S3) on the `LifespanManager` in `lifespans/hub.py`, not in `main.py`.
+- **Workers** are aiokafka consumer loops with a small FastAPI `/health` endpoint.
+- **DB schema:** no migrations. A schema change needs `init-db/postgres-image-metadata/*.sql` and `db/models.py` updated together, plus a fresh volume.
+- **Docker builds:** each Python Dockerfile copies `services/shared-core` next to the service and runs `uv sync --frozen --no-dev`. Run `uv lock` after changing dependencies or the build fails.
