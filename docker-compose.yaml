@@ -12,7 +12,7 @@ services:
     secrets:
       - db_kc_password
     networks:
-      - backend-net
+      - image-platform-network
     command: ["postgres", "-c", "wal_level=logical"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U keycloak"]
@@ -52,13 +52,13 @@ services:
       retries: 5
       start_period: 30s # Keycloak takes a while to boot and import realms
     networks:
-      - backend-net
+      - image-platform-network
 
   redis-session:
     image: redis:7.4-alpine
     container_name: redis-session
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -90,7 +90,7 @@ services:
       - ./persistent_data/kafka:/var/lib/kafka/data
       - ./secrets/kafka:/etc/kafka/secrets
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
       interval: 10s
@@ -118,7 +118,7 @@ services:
       debezium:
         condition: service_healthy
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q 'UP' || exit 1"]
       interval: 15s
@@ -136,7 +136,7 @@ services:
       debezium:
         condition: service_healthy
     networks:
-      - backend-net
+      - image-platform-network
 
   debezium:
     image: debezium/connect:2.7.3.Final
@@ -159,7 +159,7 @@ services:
       postgres-keycloak:
         condition: service_healthy
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8083/"]
       interval: 10s
@@ -182,7 +182,7 @@ services:
       postgres-keycloak:
         condition: service_healthy
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD", "wget", "-O", "-", "http://localhost:80/misc/ping"]
       interval: 10s
@@ -203,7 +203,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test:
         [
@@ -223,7 +223,7 @@ services:
       - "8025:8025" # Dashboard
       - "1025:1025" # SMTP
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8025/readyz > /dev/null || exit 1"]
       interval: 15s
@@ -246,7 +246,7 @@ services:
     secrets:
       - db_asset_password
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U asset_admin -d asset_metadata -p 5432"]
       interval: 10s
@@ -277,7 +277,7 @@ services:
       rustfs:
         condition: service_healthy
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       # We use localhost because the command runs INSIDE the container
       test: curl -s http://localhost:8000/health | grep -q '{"status":"ok"}' || exit 1
@@ -313,7 +313,7 @@ services:
     secrets:
       - bff_client_secret
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -345,7 +345,7 @@ services:
       # Python Config
       - PYTHONUNBUFFERED=1
     networks:
-      - backend-net
+      - image-platform-network
     depends_on:
       kafka:
         condition: service_healthy
@@ -382,7 +382,7 @@ services:
       # Python Config
       - PYTHONUNBUFFERED=1
     networks:
-      - backend-net
+      - image-platform-network
     depends_on:
       kafka:
         condition: service_healthy
@@ -414,7 +414,7 @@ services:
       mailpit:
         condition: service_healthy
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -434,7 +434,7 @@ services:
       bff-token-handler:
         condition: service_healthy
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       # We check the local port 80. -f ensures failure on 4xx/5xx errors.
       test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
@@ -452,7 +452,7 @@ services:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: wget --quiet --tries=1 --output-document=- http://localhost:3100/ready | grep -q -w ready || exit 1
       start_period: 20s
@@ -484,7 +484,7 @@ services:
     ports:
       - "12345:12345" # Alloy UI for debugging pipelines
     networks:
-      - backend-net
+      - image-platform-network
     depends_on:
       - loki
 
@@ -501,7 +501,7 @@ services:
     depends_on:
       - loki
     networks:
-      - backend-net
+      - image-platform-network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
       interval: 10s
@@ -509,9 +509,9 @@ services:
       retries: 5
 
 networks:
-  backend-net:
+  image-platform-network:
     driver: bridge
-    name: backend-net
+    name: image-platform-network
 
 secrets:
   db_kc_password:
