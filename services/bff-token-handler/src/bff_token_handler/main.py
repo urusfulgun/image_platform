@@ -3,7 +3,7 @@
 Routes:
   GET  /login        → Redirect to KeyCloak PKCE auth URL
   GET  /callback     → Exchange code, store session, set HttpOnly cookie
-  POST /logout       → Delete session, clear cookie
+  POST /logout       → End Keycloak session, delete session, clear cookie
   GET  /me           → Return user info from current session
   ANY  /proxy/{path} → Authenticated reverse proxy to AssetService
 """
@@ -11,11 +11,12 @@ Routes:
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
-from keycloak import KeycloakAuthenticationError, KeycloakOpenID
+from keycloak import KeycloakAuthenticationError, KeycloakError, KeycloakOpenID
 from shared_core.dto.key_pair import KeyPair
 from shared_core.schemas.responses.profile import UserProfileResponse
 from shared_core.schemas.security.token_set import TokenSet
@@ -28,6 +29,7 @@ from bff_token_handler.auth.oauth import (
     generate_pkce_pair,
     get_keycloak_openid,
     introspect_token,
+    revoke_token_at_keycloak,
 )
 from bff_token_handler.proxy.reverse_proxy import proxy_request
 from bff_token_handler.session.redis_store import (
@@ -169,27 +171,35 @@ async def logout(request: Request):
     else:
         token_set: TokenSet = user_session.token_set
 
-        # 2. Revoke the Refresh Token at Keycloak (DPoP bound) (leverage DPoP private key)
-        # This prevents anyone from using the stolen refresh token later.
-        # await revoke_token_at_keycloak(
-        #     refresh_token=token_set.refresh_token,
-        #     dpop_key_pair=user_session.key_pair,
-        # )
+        # 2. End the Keycloak session back-channel so the refresh token is dead
+        # even if the browser never follows the front-channel logoutUrl.
+        # Best effort: a Keycloak failure must not block local logout.
+        revoked = True
+        try:
+            await revoke_token_at_keycloak(
+                refresh_token=token_set.refresh_token,
+                dpop_key_pair=user_session.key_pair,
+            )
+        except KeycloakError as e:
+            revoked = False
+            log.warning(f"Keycloak back-channel logout failed: {e}")
 
         # 3. Delete the server-side session
         await session_store.delete(session_id)
 
-        # 4. Prepare the OIDC End Session URL for the frontend
+        # 4. Prepare the OIDC End Session URL for the frontend; it clears the
+        # Keycloak SSO cookies in the browser.
         # Including id_token_hint prevents the Keycloak "Do you want to logout?" prompt.
-        keycloak_logout_url = (
-            f"{settings.keycloak_url}/realms/{settings.realm}/protocol/openid-connect/logout"
-            f"?id_token_hint={token_set.id_token}"
-            f"&post_logout_redirect_uri={settings.frontend_url}"
+        query = urlencode(
+            {
+                "id_token_hint": token_set.id_token,
+                "post_logout_redirect_uri": settings.frontend_url,
+            }
         )
+        keycloak_logout_url = f"{settings.logout_url}?{query}"
 
-        response = JSONResponse(
-            {"detail": "Logged out locally and revoked", "logoutUrl": keycloak_logout_url}
-        )
+        detail = "Logged out and revoked" if revoked else "Logged out locally"
+        response = JSONResponse({"detail": detail, "logoutUrl": keycloak_logout_url})
 
     # 5. Clear the HttpOnly session cookie
     response.delete_cookie(

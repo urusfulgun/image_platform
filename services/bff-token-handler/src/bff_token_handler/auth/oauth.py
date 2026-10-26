@@ -199,10 +199,11 @@ async def introspect_token(
 
 
 async def revoke_token_at_keycloak(refresh_token: str, dpop_key_pair: KeyPair) -> None:
-    # Generate the DPoP Proof for the revocation endpoint
+    """End the Keycloak user session (back-channel), invalidating the refresh token."""
+    # The proof's htu must match the endpoint a_logout() posts to
     dpop_proof = create_dpop_proof(
         "POST",
-        settings.keycloak_revocation_url,
+        settings.logout_url,
         dpop_key_pair,
     )
 
@@ -214,4 +215,4 @@ async def revoke_token_at_keycloak(refresh_token: str, dpop_key_pair: KeyPair) -
         custom_headers={"DPoP": dpop_proof},
     )
     dynamic_client = await get_dynamic_client(keycloak_config=dynamic_config)
-    dynamic_client.logout(refresh_token=refresh_token)
+    await dynamic_client.a_logout(refresh_token=refresh_token)
