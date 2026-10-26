@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, utils
 from bff_token_handler.auth.dpop import (
     COORD_LEN,
     create_dpop_proof,
+    decode_jwt_token,
     generate_ec_key_pair,
     get_public_jwk,
 )
@@ -87,6 +88,38 @@ def test_dpop_proof_signature_verifies_with_embedded_jwk(key_pair):
         f"{h_b64}.{p_b64}".encode("ascii"),
         ec.ECDSA(hashes.SHA256()),
     )
+
+
+def test_decode_jwt_token_round_trips_dpop_proof(key_pair):
+    proof = create_dpop_proof("POST", "https://example.com/token", key_pair)
+
+    header, payload, signature = decode_jwt_token(proof)
+
+    assert header["typ"] == "dpop+jwt"
+    assert payload["htu"] == "https://example.com/token"
+    assert signature == _decode_b64url(proof.split(".")[2])
+    assert len(signature) == 2 * COORD_LEN
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "only.two",
+        "a.b.c.d",
+        "!!!.e30.sig",  # header is not valid JSON
+        "W10.e30.sig",  # header is a JSON array, not an object
+    ],
+)
+def test_decode_jwt_token_rejects_malformed_tokens(token):
+    with pytest.raises(ValueError):
+        decode_jwt_token(token)
+
+
+def test_decode_jwt_token_rejects_non_str_without_echoing_it():
+    secret = b"secret.token.bytes"
+    with pytest.raises(TypeError) as exc_info:
+        decode_jwt_token(secret)
+    assert "secret" not in str(exc_info.value)
 
 
 def test_public_jwk_has_required_fields(key_pair):
