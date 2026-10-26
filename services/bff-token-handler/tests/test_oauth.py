@@ -3,6 +3,8 @@ import pytest
 import base64
 import hashlib
 
+from keycloak import KeycloakOpenID
+
 from bff_token_handler.auth.oauth import generate_pkce_pair, build_auth_url, clean_bytes
 
 
@@ -21,8 +23,25 @@ def test_pkce_verifier_is_url_safe():
                for c in verifier)
 
 
-def test_build_auth_url_contains_required_params():
-    url = build_auth_url(state="mystate", code_challenge="mychallenge")
+def test_build_auth_url_contains_required_params(mocker):
+    keycloak_openid = KeycloakOpenID(
+        server_url="http://keycloak.test", realm_name="test", client_id="bff"
+    )
+    # auth_url() fetches the well-known config; stub it to stay offline
+    mocker.patch.object(
+        keycloak_openid,
+        "well_known",
+        return_value={
+            "authorization_endpoint": "http://keycloak.test/realms/test/protocol/openid-connect/auth"
+        },
+    )
+
+    url = build_auth_url(
+        keycloak_openid,
+        state="mystate",
+        code_challenge="mychallenge",
+        code_challenge_method="S256",
+    )
     assert "response_type=code" in url
     assert "code_challenge=mychallenge" in url
     assert "code_challenge_method=S256" in url
