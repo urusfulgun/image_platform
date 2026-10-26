@@ -1,27 +1,17 @@
 """OAuth2 Authorization Code + PKCE flow helpers."""
 
 import base64
-import hashlib
 import logging
-import os
-import secrets
-from dataclasses import dataclass
-from typing import Literal, Optional
-from urllib.parse import urlencode
-from pydantic import BaseModel, HttpUrl
 
-import httpx
-
-from bff_token_handler.settings import settings, keycloak_config
-from bff_token_handler.auth.dpop import create_dpop_proof, KeyPair, generate_dpop_ath
-from keycloak import KeycloakOpenID, pkce_utils, keycloak_uma, urls_patterns
+from bff_token_handler.auth.dpop import KeyPair, create_dpop_proof, generate_dpop_ath
+from bff_token_handler.settings import keycloak_config, settings
+from keycloak import KeycloakOpenID, pkce_utils, urls_patterns
 from keycloak import exceptions as kc_exc
 from shared_core.schemas.security.config import (
     KeyCloakDynamicClientConfig,
     KeyCloakOpenIDConfig,
 )
 from shared_core.schemas.security.token_set import TokenSet
-
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -169,7 +159,10 @@ async def clean_bytes(data) -> dict | list | str:
         return [clean_bytes(i) for i in data]
     elif isinstance(data, bytes):
         return data.decode("utf-8")
-    return data
+    else:
+        raise TypeError(
+            f"Expected data of type dict or list or bytes. Got {type(data)}"
+        )
 
 
 async def introspect_token(

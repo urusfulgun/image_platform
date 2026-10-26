@@ -4,17 +4,14 @@ Generates an RSA key pair at module load. The private key is kept in memory
 only — tokens bound to this key are useless without it.
 """
 
+import base64
+import hashlib
 import json
 import secrets
 import time
-from typing import NamedTuple
-import uuid
-import base64
-import hashlib
 
-from cryptography.hazmat.primitives.asymmetric import rsa, padding, ec, utils
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec, utils
 from shared_core.dto.key_pair import KeyPair
 
 COORD_LEN = 32
@@ -108,12 +105,14 @@ def _encode_header_payload(header: dict, payload: dict) -> bytes:
     return f"{h_b64}.{p_b64}".encode("ascii")
 
 
-def decode_jwt_token(token: str):
+def decode_jwt_token(token: str) -> tuple[dict, dict, bytes]:
     """
     Reverses the encoding of a JWT token.
     Returns: (header_dict, payload_dict, signature_bytes)
     """
     # 1. Split the string into its 3 Base64URL components
+    if type(token) != str:
+        raise TypeError(f"Expected token type str. Got {type(token)}. Contains {token}")
     parts = token.split(".")
     if len(parts) != 3:
         raise ValueError("Invalid token format. Expected 3 parts.")
