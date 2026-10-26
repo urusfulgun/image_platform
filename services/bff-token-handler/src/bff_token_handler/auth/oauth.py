@@ -29,11 +29,11 @@ def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
-def generate_pkce_pair() -> tuple[str, str]:
+def generate_pkce_pair() -> tuple[str, str, str]:
     """Generate a PKCE code_verifier and code_challenge pair.
 
     Returns:
-        (code_verifier, code_challenge) both as strings.
+        (code_verifier, code_challenge, code_challenge_method) all as strings.
     """
     code_challenge_method = settings.pkce_code_challenge_method
     code_verifier = pkce_utils.generate_code_verifier()
