@@ -6,7 +6,7 @@ Items run in order within each phase. Characterization tests come first so that 
 
 ## Phase 1: Foundation
 
-- [ ] F1 [M] Characterization tests for the asset-service API: projects, presign, delete and the RustFS callback
+- [x] F1 [M] Characterization tests for the asset-service API: projects, presign, delete and the RustFS callback
 - [ ] F2 [M] Characterization tests for the BFF: login, callback, `/me` and the proxy, including current header forwarding
 - [ ] F3 [S] Characterization tests for `rs_dpop` token and DPoP validation
 - [ ] F4 [M] First tests for the email-notification and cleanup-buckets workers
