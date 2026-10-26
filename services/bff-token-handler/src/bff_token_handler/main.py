@@ -161,10 +161,14 @@ async def logout(request: Request):
         return JSONResponse({"detail": "Already logged out"}, status_code=200)
 
     # 1. Retrieve tokens and DPoP key from the secure store
-    user_session: UserSession = await session_store.get(session_id)
-    token_set: TokenSet = user_session.token_set
+    user_session: UserSession | None = await session_store.get(session_id)
 
-    if user_session:
+    if user_session is None:
+        # Session already expired in Redis; just clear the stale cookie
+        response = JSONResponse({"detail": "Already logged out"}, status_code=200)
+    else:
+        token_set: TokenSet = user_session.token_set
+
         # 2. Revoke the Refresh Token at Keycloak (DPoP bound) (leverage DPoP private key)
         # This prevents anyone from using the stolen refresh token later.
         # await revoke_token_at_keycloak(
@@ -175,17 +179,17 @@ async def logout(request: Request):
         # 3. Delete the server-side session
         await session_store.delete(session_id)
 
-    # 4. Prepare the OIDC End Session URL for the frontend
-    # Including id_token_hint prevents the Keycloak "Do you want to logout?" prompt.
-    keycloak_logout_url = (
-        f"{settings.keycloak_url}/realms/{settings.realm}/protocol/openid-connect/logout"
-        f"?id_token_hint={token_set.id_token}"
-        f"&post_logout_redirect_uri={settings.frontend_url}"
-    )
+        # 4. Prepare the OIDC End Session URL for the frontend
+        # Including id_token_hint prevents the Keycloak "Do you want to logout?" prompt.
+        keycloak_logout_url = (
+            f"{settings.keycloak_url}/realms/{settings.realm}/protocol/openid-connect/logout"
+            f"?id_token_hint={token_set.id_token}"
+            f"&post_logout_redirect_uri={settings.frontend_url}"
+        )
 
-    response = JSONResponse(
-        {"detail": "Logged out locally and revoked", "logoutUrl": keycloak_logout_url}
-    )
+        response = JSONResponse(
+            {"detail": "Logged out locally and revoked", "logoutUrl": keycloak_logout_url}
+        )
 
     # 5. Clear the HttpOnly session cookie
     response.delete_cookie(
