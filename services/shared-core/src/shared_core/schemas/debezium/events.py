@@ -14,7 +14,7 @@ class KeycloakUserEvent(BaseModel):
     
     # Metadata added by the Debezium 'unwrap' transform
     op: str = Field(..., alias="__op") # 'c'=create, 'u'=update, 'd'=delete
-    deleted: Optional[str] = Field(None, alias="__deleted")
+    deleted: bool = Field(False, alias="__deleted")  # "true"/"false" string from rewrite mode
 
     class Config:
         populate_by_name = True

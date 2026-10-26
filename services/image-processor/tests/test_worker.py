@@ -3,7 +3,7 @@ import json
 import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from shared_core.events.kafka_events import ImageRawUploadedEvent
 from image_processor.main import (
     KafkaImageWorker,
@@ -68,11 +68,14 @@ async def test_handle_processing_success(worker, raw_event):
         "Body": AsyncMock(read=AsyncMock(return_value=img_data))
     }
 
+    main_img = {"bytes": b"avif-data", "path": "proj/1/optimized.avif"}
+    preview_img = {"bytes": b"preview-data", "path": "proj/2/preview_tile.avif"}
+
     # Mock the internal CPU conversion to avoid actual PIL processing
     with (
         patch.object(
-            worker, "_to_avif", return_value=(b"avif-data", "path/image.avif")
-        ),
+            worker, "_process_image_variants", return_value=(main_img, preview_img)
+        ) as mock_process,
         patch.object(worker.session, "client", return_value=mock_s3),
     ):
         mock_s3.__aenter__.return_value = mock_s3
@@ -83,13 +86,28 @@ async def test_handle_processing_success(worker, raw_event):
         mock_s3.get_object.assert_called_once_with(
             Bucket="raw-images", Key=raw_event.raw_s3_path
         )
-        mock_s3.put_object.assert_called_once_with(
+        mock_process.assert_called_once_with(img_data, raw_event.project_id)
+        assert mock_s3.put_object.call_count == 2
+        mock_s3.put_object.assert_any_call(
             Bucket="processed-images",
-            Key="path/image.avif",
-            Body=b"avif-data",
+            Key=main_img["path"],
+            Body=main_img["bytes"],
             ContentType="image/avif",
         )
+        mock_s3.put_object.assert_any_call(
+            Bucket="processed-images",
+            Key=preview_img["path"],
+            Body=preview_img["bytes"],
+            ContentType="image/avif",
+        )
+
         worker.producer.send_and_wait.assert_called_once()
+        topic, ready_payload = worker.producer.send_and_wait.call_args.args
+        assert topic == "image.avif.ready"
+        assert ready_payload["image_id"] == str(raw_event.image_id)
+        assert ready_payload["processed_s3_path"] == main_img["path"]
+        assert ready_payload["preview_s3_path"] == preview_img["path"]
+        assert ready_payload["processed_format"] == "avif"
 
 
 @pytest.mark.asyncio
@@ -128,71 +146,45 @@ async def test_run_loop_and_commit(worker: KafkaImageWorker):
 # --- Logic Tests (CPU Bound) ---
 
 
-def test_to_avif_conversion_logic_jpeg(worker: KafkaImageWorker):
-    """Verifies image transformation and path generation."""
-    # Create a small red square
-    img = Image.new("RGB", (100, 100), color="red")
-    img_byte_arr = io.BytesIO()
-    img.save(img_byte_arr, format="JPEG")
+def _encode(img: Image.Image, fmt: str) -> bytes:
+    buf = io.BytesIO()
+    img.save(buf, format=fmt)
+    return buf.getvalue()
 
-    with patch.object(worker, "_get_s3_key", return_value="processed/test.avif"):
-        avif_bytes, new_path = worker._to_avif(
-            img_byte_arr.getvalue(), "raw/test.jpg", "proj-1"
-        )
 
-    assert new_path == "processed/test.avif"
-    with Image.open(io.BytesIO(avif_bytes)) as result_img:
+def test_process_image_variants_jpeg(worker: KafkaImageWorker):
+    """Produces a full-size AVIF and a preview tile under the project prefix."""
+    data = _encode(Image.new("RGB", (100, 100), color="red"), "JPEG")
+
+    main_img, preview_img = worker._process_image_variants(data, "proj-1")
+
+    assert main_img["path"].startswith("proj-1/")
+    assert main_img["path"].endswith("/optimized.avif")
+    assert preview_img["path"].startswith("proj-1/")
+    assert preview_img["path"].endswith("/preview_tile.avif")
+    for variant in (main_img, preview_img):
+        with Image.open(io.BytesIO(variant["bytes"])) as result_img:
+            assert result_img.format == "AVIF"
+
+
+def test_process_image_variants_png_rgba(worker: KafkaImageWorker):
+    """RGBA input is converted to RGB; main keeps its size, preview is scaled down."""
+    width, height = 600, 400
+    data = _encode(Image.new("RGBA", (width, height), color=(255, 0, 0, 128)), "PNG")
+
+    main_img, preview_img = worker._process_image_variants(data, "proj-123")
+
+    with Image.open(io.BytesIO(main_img["bytes"])) as result_img:
         assert result_img.format == "AVIF"
-
-
-def test_to_avif_conversion_logic_png(worker: KafkaImageWorker):
-    # 1. Setup: Create a fake RGBA (transparent) PNG image in memory
-    # We use RGBA to test if the worker correctly converts it to RGB
-    width, height = 100, 100
-    original_img = Image.new("RGBA", (width, height), color=(255, 0, 0, 128))
-    img_byte_arr = io.BytesIO()
-    original_img.save(img_byte_arr, format="PNG")
-    raw_data = img_byte_arr.getvalue()
-
-    project_id = "proj-123"
-    original_path = "folder/subfolder/photo.png"
-    processed_image_path = "proj-123/folder/subfolder/photo.avif"
-
-    # Mock the s3 key helper to return a predictable string
-    # worker._get_s3_key = MagicMock(return_value="proj-123/folder/subfolder/photo.avif")
-
-    # 2. Execute
-    with patch.object(
-        worker, "_get_s3_key", return_value=processed_image_path
-    ):
-        avif_bytes, new_path = worker._to_avif(
-            raw_data,
-            original_path,
-            project_id,
-        )
-
-    # 3. Assertions
-    assert new_path == processed_image_path
-    assert len(avif_bytes) > 0
-
-    # Verify the output is a valid AVIF image
-    with Image.open(io.BytesIO(avif_bytes)) as result_img:
-        assert result_img.format == "AVIF"
-        # Verify the mode was converted to RGB (since AVIF doesn't always play nice with RGBA in standard saves)
         assert result_img.mode == "RGB"
         assert result_img.size == (width, height)
 
+    # thumbnail() keeps aspect ratio within PREVIEW_SIZE (300x300)
+    with Image.open(io.BytesIO(preview_img["bytes"])) as result_img:
+        assert result_img.format == "AVIF"
+        assert result_img.size == (300, 200)
 
-def test_to_avif_handles_corrupted_data(worker: KafkaImageWorker):
-    # Setup: Provide random garbage bytes instead of a real image
-    bad_data = b"not_an_image_file_content"
 
-    # Execute & Assert: PIL should raise an UnidentifiedImageError
-    with patch.object(worker, "_get_s3_key", return_value="processed/test.avif"):
-        # Execute & Assert: PIL should raise an UnidentifiedImageError
-        with pytest.raises(Exception):
-            _, _ = worker._to_avif(
-                bad_data,
-                "test.jpg",
-                "proj-1",  # Specifically PIL.UnidentifiedImageError
-            )
+def test_process_image_variants_handles_corrupted_data(worker: KafkaImageWorker):
+    with pytest.raises(UnidentifiedImageError):
+        worker._process_image_variants(b"not_an_image_file_content", "proj-1")

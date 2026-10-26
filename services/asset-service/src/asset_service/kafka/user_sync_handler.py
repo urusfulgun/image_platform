@@ -60,7 +60,7 @@ class UpsertUserHandler(UserSyncHandler):
 class DeleteUserHandler(UserSyncHandler):
     async def handle(self, event: KeycloakUserEvent, db_session: AsyncSession):
         # Handle the explicit delete operation
-        if event.op == "d" or event.deleted is True:
+        if event.op == "d" or event.deleted:
             log.info(f"🗑️ Deleting user: {event.sub}")
             await db_session.execute(
                 delete(models.UserModel).where(models.UserModel.kc_sub == event.sub)
@@ -74,9 +74,10 @@ class UserEventOrchestrator:
     handlers: list[UserSyncHandler]
 
     def __init__(self):
+        # Delete runs first so a record flagged __deleted is never upserted
         self.handlers = [
-            UpsertUserHandler(),
             DeleteUserHandler(),
+            UpsertUserHandler(),
         ]
 
     async def process(
