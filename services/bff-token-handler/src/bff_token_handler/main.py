@@ -174,15 +174,16 @@ async def logout(request: Request):
         # 2. End the Keycloak session back-channel so the refresh token is dead
         # even if the browser never follows the front-channel logoutUrl.
         # Best effort: a Keycloak failure must not block local logout.
-        revoked = True
-        try:
-            await revoke_token_at_keycloak(
-                refresh_token=token_set.refresh_token,
-                dpop_key_pair=user_session.key_pair,
-            )
-        except KeycloakError as e:
-            revoked = False
-            log.warning(f"Keycloak back-channel logout failed: {e}")
+        revoked = False
+        if token_set.refresh_token:
+            try:
+                await revoke_token_at_keycloak(
+                    refresh_token=token_set.refresh_token,
+                    dpop_key_pair=user_session.key_pair,
+                )
+                revoked = True
+            except KeycloakError as e:
+                log.warning(f"Keycloak back-channel logout failed: {e}")
 
         # 3. Delete the server-side session
         await session_store.delete(session_id)
