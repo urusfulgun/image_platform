@@ -12,10 +12,10 @@ import logging
 import secrets
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
-from keycloak import KeycloakAuthenticationError, KeycloakOpenID, pkce_utils
+from keycloak import KeycloakAuthenticationError, KeycloakOpenID
 from shared_core.dto.key_pair import KeyPair
 from shared_core.schemas.responses.profile import UserProfileResponse
 from shared_core.schemas.security.token_set import TokenSet
@@ -28,12 +28,10 @@ from bff_token_handler.auth.oauth import (
     generate_pkce_pair,
     get_keycloak_openid,
     introspect_token,
-    revoke_token_at_keycloak,
 )
 from bff_token_handler.proxy.reverse_proxy import proxy_request
 from bff_token_handler.session.redis_store import (
     CodeVerifierStore,
-    RedisSession,
     SessionStore,
     get_code_verifier_store,
     get_redis_session,
@@ -165,14 +163,13 @@ async def logout(request: Request):
     # 1. Retrieve tokens and DPoP key from the secure store
     user_session: UserSession = await session_store.get(session_id)
     token_set: TokenSet = user_session.token_set
-    key_pair: KeyPair = user_session.key_pair
 
     if user_session:
         # 2. Revoke the Refresh Token at Keycloak (DPoP bound) (leverage DPoP private key)
         # This prevents anyone from using the stolen refresh token later.
         # await revoke_token_at_keycloak(
         #     refresh_token=token_set.refresh_token,
-        #     dpop_key_pair=key_pair,
+        #     dpop_key_pair=user_session.key_pair,
         # )
 
         # 3. Delete the server-side session
