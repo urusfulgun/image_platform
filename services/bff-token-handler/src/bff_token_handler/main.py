@@ -224,7 +224,11 @@ async def me(request: Request):
         user_info_token = await introspect_token(key_pair, token_set.access_token)
     except KeycloakAuthenticationError as e:
         return JSONResponse({"detail": f"Not authenticated extra: {e.error_message}"}, status_code=e.response_code)
-    _, claims, _ = decode_jwt_token(user_info_token)
+    # Userinfo is plain JSON unless the client has signed userinfo responses enabled
+    if isinstance(user_info_token, dict):
+        claims = user_info_token
+    else:
+        _, claims, _ = decode_jwt_token(user_info_token)
     user_info = UserProfileResponse.model_validate(claims)
     return JSONResponse({"id_token": user_info.model_dump(mode="json")})
 
