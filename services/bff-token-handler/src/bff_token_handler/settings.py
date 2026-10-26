@@ -21,6 +21,7 @@ class BffSettings(BaseAppSettings):
     # Redis session store
     redis_url: str = "redis://redis-session:6379/0"
     session_cookie_name: str = "sid"
+    session_cookie_secure: bool = False  # Set True in production with HTTPS
     session_ttl_seconds: int = 3600
 
     # Upstream AssetService

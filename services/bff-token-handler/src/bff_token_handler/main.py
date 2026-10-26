@@ -145,7 +145,7 @@ async def callback(request: Request, code: str, state: str):
         value=session_id,
         httponly=True,
         samesite="strict",
-        secure=False,  # Set True in production with HTTPS
+        secure=settings.session_cookie_secure,
         max_age=settings.session_ttl_seconds,
         path="/",
     )
@@ -196,8 +196,8 @@ async def logout(request: Request):
         key=settings.session_cookie_name,
         path="/",
         httponly=True,
-        samesite="lax",  # or "strict"
-        secure=True,
+        samesite="strict",
+        secure=settings.session_cookie_secure,
     )
 
     return response
