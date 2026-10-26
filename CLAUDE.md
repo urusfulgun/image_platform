@@ -25,7 +25,7 @@ services/
   bff-token-handler/   FastAPI on Granian: OAuth BFF, sessions in Redis, DPoP proxy to asset-service
   image-processor/     worker: raw image -> AVIF + preview
   email-notification/  worker: SMTP to Mailpit on image.avif.ready
-  cleanup-buckets/     worker: prunes raw objects
+  cleanup-buckets/     worker: deletes an image's S3 objects on image.all.deleted
   frontend/            Angular 21 SPA (Bun)
 docker/                one Dockerfile per service (build context is the repo root)
 config/                nginx-proxy, debezium (register-connectors.sh), grafana_alloy
@@ -75,7 +75,7 @@ Prettier config is in `package.json`: printWidth 100, single quotes.
 - **BFF Token Handler:** the browser never holds OAuth tokens. The BFF (confidential client `bff-client`) runs Auth Code + PKCE, stores the `TokenSet` and DPoP key pair in Redis under a random session id, and sets an HttpOnly, SameSite=Strict `sid` cookie. Cookie attributes must stay identical between `set_cookie` and `delete_cookie`. Everything lives on `app.state`, created in `lifespan` in `main.py`.
 - **DPoP:** every upstream call to AssetService gets a fresh proof with an `ath` claim (`bff_token_handler/proxy/reverse_proxy.py`). RS-side validation helper: `shared_core/utils/endpoint/rs_dpop.py`.
 - **Shadow users:** AssetService identifies the user via `X-User-Sub` (`asset_service/api/deps.py`) and resolves a local `UserModel` by `kc_sub`, returning 404 "User not synced yet" if missing. Users arrive by CDC: Debezium on Keycloak `public.user_entity` → Kafka topic `keycloak-users` → `asset_service/kafka/consumer.py` / `user_sync_handler.py`. Only `register-connectors.sh` is mounted; the `copy*` variants are scratch.
-- **Image pipeline topics:** pre-signed PUT to bucket `raw-images` → RustFS webhook `POST /callback/rustfs` (`api/s3_callbacks.py`) → `image.raw.uploaded` → image-processor writes to `processed-images` and emits `image.avif.ready` (failures to DLQ `image.raw.failed`) → consumed by AssetService (`lifespans/image_status.py`, status `OPTIMIZED`), email-notification and cleanup-buckets. Deletions emit `image.all.deleted`.
+- **Image pipeline topics:** pre-signed PUT to bucket `raw-images` → RustFS webhook `POST /callback/rustfs` (`api/s3_callbacks.py`) → `image.raw.uploaded` → image-processor writes to `processed-images` and emits `image.avif.ready` (failures to DLQ `image.raw.failed`) → consumed by AssetService (`lifespans/image_status.py`, status `OPTIMIZED`) and email-notification. Deletions emit `image.all.deleted`, which cleanup-buckets consumes to remove the raw, processed and preview objects. Raw objects are not pruned after processing.
 - **Events:** all payloads are Pydantic models in `shared_core/events/kafka_events.py`. Change producers and consumers together.
 - **shared-core** is an editable path dependency of every Python service (`[tool.uv.sources] shared-core = { path = "../shared-core", editable = true }`). Changes affect every service.
 - **asset-service layering:** `api/` → `dependencies/` → `domain/` (`ProjectService`, `ImageService`) → `db/` (async SQLAlchemy + asyncpg). Register background resources (Kafka, S3) on the `LifespanManager` in `lifespans/hub.py`, not in `main.py`.
