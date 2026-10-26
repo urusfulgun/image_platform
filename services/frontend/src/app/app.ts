@@ -6,7 +6,6 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { UploaderComponent } from './components/uploader.component';
 import { ProfileComponent } from './components/profile/profile.component';
 import { ProfileService } from './services/profile.service';
 
@@ -21,7 +20,6 @@ import { ProfileService } from './services/profile.service';
     MatIconModule,
     MatButtonModule,
     MatProgressBarModule,
-    UploaderComponent,
     ProfileComponent,
   ],
   templateUrl: './app.html',
