@@ -9,10 +9,13 @@ from typing import Optional
 import httpx
 from fastapi import Request, Response
 
-from bff_token_handler.auth.dpop import create_dpop_proof, decode_jwt_token, generate_dpop_ath
+from bff_token_handler.auth.dpop import (
+    create_dpop_proof,
+    decode_jwt_token,
+    generate_dpop_ath,
+)
 from bff_token_handler.session.redis_store import SessionStore
 from bff_token_handler.settings import settings
-
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

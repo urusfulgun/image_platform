@@ -1,6 +1,7 @@
 """Pytest configuration for BFF Token Handler tests."""
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 @pytest.fixture

@@ -1,11 +1,11 @@
 """Tests for PKCE helpers."""
-import pytest
 import base64
 import hashlib
 
+import pytest
 from keycloak import KeycloakOpenID
 
-from bff_token_handler.auth.oauth import generate_pkce_pair, build_auth_url, clean_bytes
+from bff_token_handler.auth.oauth import build_auth_url, clean_bytes, generate_pkce_pair
 
 
 def test_pkce_pair_challenge_matches_verifier():

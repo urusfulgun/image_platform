@@ -1,8 +1,8 @@
 """Tests for DPoP proof generation."""
-import json
 import base64
-import pytest
+import json
 
+import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, utils
 

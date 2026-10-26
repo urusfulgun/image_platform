@@ -12,13 +12,16 @@ import logging
 import secrets
 from contextlib import asynccontextmanager
 
-from shared_core.schemas.security.user_session import UserSession
-
-from bff_token_handler.auth.dpop import decode_jwt_token, generate_ec_key_pair
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from keycloak import KeycloakAuthenticationError, KeycloakOpenID, pkce_utils
+from shared_core.dto.key_pair import KeyPair
+from shared_core.schemas.responses.profile import UserProfileResponse
+from shared_core.schemas.security.token_set import TokenSet
+from shared_core.schemas.security.user_session import UserSession
 
+from bff_token_handler.auth.dpop import decode_jwt_token, generate_ec_key_pair
 from bff_token_handler.auth.oauth import (
     build_auth_url,
     exchange_code,
@@ -28,19 +31,15 @@ from bff_token_handler.auth.oauth import (
     revoke_token_at_keycloak,
 )
 from bff_token_handler.proxy.reverse_proxy import proxy_request
-from keycloak import KeycloakAuthenticationError, KeycloakOpenID, pkce_utils
 from bff_token_handler.session.redis_store import (
-    SessionStore,
     CodeVerifierStore,
     RedisSession,
-    get_session_store,
+    SessionStore,
     get_code_verifier_store,
     get_redis_session,
+    get_session_store,
 )
-from bff_token_handler.settings import settings, keycloak_config
-from shared_core.dto.key_pair import KeyPair
-from shared_core.schemas.responses.profile import UserProfileResponse
-from shared_core.schemas.security.token_set import TokenSet
+from bff_token_handler.settings import keycloak_config, settings
 
 # --- Temporary in-memory store for PKCE state/verifier (per-request) ---
 # In production use Redis with short TTL; fine for demo.

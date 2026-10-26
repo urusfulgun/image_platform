@@ -3,8 +3,6 @@
 import base64
 import logging
 
-from bff_token_handler.auth.dpop import KeyPair, create_dpop_proof, generate_dpop_ath
-from bff_token_handler.settings import keycloak_config, settings
 from keycloak import KeycloakOpenID, pkce_utils, urls_patterns
 from keycloak import exceptions as kc_exc
 from shared_core.schemas.security.config import (
@@ -12,6 +10,9 @@ from shared_core.schemas.security.config import (
     KeyCloakOpenIDConfig,
 )
 from shared_core.schemas.security.token_set import TokenSet
+
+from bff_token_handler.auth.dpop import KeyPair, create_dpop_proof, generate_dpop_ath
+from bff_token_handler.settings import keycloak_config, settings
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
