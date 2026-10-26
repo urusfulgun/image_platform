@@ -152,23 +152,29 @@ async def dpop_user_info(client: KeycloakOpenID, token: str) -> dict | bytes:
     return res
 
 
-async def clean_bytes(data) -> dict | list | str:
+type JsonValue = dict | list | str | int | float | bool | None
+
+
+def clean_bytes(data: object) -> JsonValue:
+    """Recursively decode bytes to str, leaving other JSON values untouched."""
     if isinstance(data, dict):
         return {k: clean_bytes(v) for k, v in data.items()}
     elif isinstance(data, list):
         return [clean_bytes(i) for i in data]
     elif isinstance(data, bytes):
         return data.decode("utf-8")
+    elif data is None or isinstance(data, (str, int, float, bool)):
+        return data
     else:
         raise TypeError(
-            f"Expected data of type dict or list or bytes. Got {type(data)}"
+            f"Expected bytes or a JSON-compatible value. Got {type(data)}"
         )
 
 
 async def introspect_token(
     key_pair: KeyPair,
     access_token: str,
-) -> dict | list | str:
+) -> JsonValue:
     """Call KeyCloak token introspection to get user info claims."""
     ath_claim = generate_dpop_ath(access_token)
     dpop_proof = create_dpop_proof(
@@ -187,7 +193,7 @@ async def introspect_token(
     )
     dynamic_client = await get_dynamic_client(keycloak_config=dynamic_config)
     user_info_encoded: bytes = await dpop_user_info(dynamic_client, access_token)
-    user_info: dict | list | str = await clean_bytes(user_info_encoded)
+    user_info: JsonValue = clean_bytes(user_info_encoded)
     return user_info
 
 

@@ -3,7 +3,7 @@ import pytest
 import base64
 import hashlib
 
-from bff_token_handler.auth.oauth import generate_pkce_pair, build_auth_url
+from bff_token_handler.auth.oauth import generate_pkce_pair, build_auth_url, clean_bytes
 
 
 def test_pkce_pair_challenge_matches_verifier():
@@ -34,3 +34,23 @@ def test_pkce_pairs_are_unique():
     _, c1, _ = generate_pkce_pair()
     _, c2, _ = generate_pkce_pair()
     assert c1 != c2
+
+
+def test_clean_bytes_decodes_nested_bytes():
+    data = {"sub": b"abc", "groups": [b"admin", "user"], "profile": {"name": b"Jane"}}
+    assert clean_bytes(data) == {
+        "sub": "abc",
+        "groups": ["admin", "user"],
+        "profile": {"name": "Jane"},
+    }
+
+
+def test_clean_bytes_passes_through_json_scalars():
+    data = {"email": "j@example.com", "email_verified": True, "exp": 1700000000,
+            "score": 0.5, "nickname": None}
+    assert clean_bytes(data) == data
+
+
+def test_clean_bytes_rejects_non_json_values():
+    with pytest.raises(TypeError):
+        clean_bytes({"bad": object()})
