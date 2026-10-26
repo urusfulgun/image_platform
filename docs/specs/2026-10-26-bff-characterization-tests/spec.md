@@ -1,7 +1,7 @@
 # F2: Characterization tests for the BFF
 
 ## Goal
-Pin the current HTTP behaviour of bff-token-handler's login, callback, `/me` and proxy routes, including exactly which headers the proxy forwards to AssetService, with tests that need no running stack. Later refactors (R1, R3, R6, R7, R8, R17) can be checked against them. Tests describe what the code **does**, not what it should do.
+Pin the current HTTP behaviour of bff-token-handler's login, callback, `/me` and proxy routes, including exactly which headers the proxy forwards to AssetService, with tests that need no running stack. Later refactors (R1, R3, R6, R7, R8, R17, R18) can be checked against them. Tests describe what the code **does**, not what it should do.
 
 ## Scope
 Routes, exercised through the real FastAPI `app` (`bff_token_handler.main`) with `fastapi.testclient.TestClient(app, raise_server_exceptions=False)`, `follow_redirects=False`, not used as a context manager, so the lifespan does not run.
@@ -41,7 +41,7 @@ Test harness (`tests/api/conftest.py` + `tests/api/helpers.py`):
 | Health | `GET /health` → 200 `{"status": "ok"}`. |
 | Login | Returns 307 to Keycloak's `authorization_endpoint` with `response_type=code`, `client_id=bff-client`, `redirect_uri=settings.redirect_uri`, `scope=openid`, a fresh `state`, `code_challenge_method=S256` and `code_challenge`. It stores `pkce:{state}` with TTL 300, and `code_challenge` = S256(stored verifier). Two logins give different `state` values. No cookie is set. |
 | Callback: errors | An unknown `state` gives 400 `{"detail": "Invalid or expired state"}`, and `exchange_code` is not called. A missing `code` or `state` gives 422. An `exchange_code` that raises `KeycloakPostError` gives 500, and no session or cookie is created. |
-| Callback: success | `exchange_code` is awaited with `(code, stored verifier, app.state.ec_key_pair)`. A `session:{sid}` entry is written with TTL `session_ttl_seconds`, and it round-trips to the same `TokenSet` and key. The response is 307 `Location: /` with `Set-Cookie: sid=<sid>; HttpOnly; Max-Age=3600; Path=/; SameSite=strict` and no `Secure`. Every session stores the **same** process-wide `ec_key_pair`. |
+| Callback: success | `exchange_code` is awaited with `(code, stored verifier, app.state.ec_key_pair)`. A `session:{sid}` entry is written with TTL `session_ttl_seconds`, and it round-trips to the same `TokenSet` and key. The response is 307 `Location: /` with `Set-Cookie: sid=<sid>; HttpOnly; Max-Age=3600; Path=/; SameSite=strict` and no `Secure`. |
 | `/me` | No cookie gives 401 `{"detail": "Not authenticated"}`. `introspect_token` is awaited with `(session key_pair, access_token)`. A dict result gives 200 `{"id_token": <UserProfileResponse fields>}` with extra claims (`sub`, `iss`) dropped. A JWS string result is decoded **without verification** and gives the same shape. `KeycloakAuthenticationError(response_code=401)` gives 401 `{"detail": "Not authenticated extra: <msg>"}`. Claims missing a required profile field give 500. |
 | Proxy: routing | No cookie gives 401 `{"detail": "Not authenticated"}`, and no upstream call is made. The upstream URL is `asset_service_url + "/" + path`, keeping the query string. The method and raw body are forwarded unchanged for GET/POST/PUT/PATCH/DELETE, and `HEAD` gives 405. The upstream status, body and `content-type` are mirrored, and a 404 from upstream passes through as 404. A session with `id_token=None` gives 500. An upstream `httpx.ConnectError` gives 500. |
 | Proxy: auth headers | `Authorization: DPoP <access_token>`, and a client `Authorization` header is dropped. The `DPoP` proof has `htm` = the method, `htu` = the full upstream URL **including the query**, `ath` = `generate_dpop_ath(access_token)`, a `jwk` thumbprint equal to the session key, and a signature that verifies against that key. `X-User-Sub` is the `sub` of the session's (unverified) id_token. `host`, `connection` and `transfer-encoding` are dropped. Other client headers (e.g. `x-custom`, `content-type`) are forwarded. |
@@ -55,6 +55,7 @@ Each of these tests gets `@pytest.mark.known_bug` and a `# CHARACTERIZATION: cha
 | A client-supplied `DPoP` header is forwarded next to the BFF's proof | R1 |
 | The browser `Cookie` header (including `sid`) is forwarded to AssetService | R1 (widened) |
 | Upstream response headers are copied verbatim (`content-encoding`, `content-length`, …), so a gzipped upstream reply arrives with `content-encoding: gzip` over an already-decoded body | R17 (new) |
+| Every session stores the **same** process-wide `app.state.ec_key_pair`, so one leaked private key unbinds every user's DPoP tokens. *Reclassified after the build.* | R18 (new) |
 | `/me` with a cookie whose session is gone gives 500, not 401 | R8 |
 | `/proxy` with a cookie whose session is gone gives 500, not 401 | R8 |
 | The PKCE state is not deleted after use, so a second callback with the same `state` creates a second session | R8 |
@@ -65,6 +66,7 @@ Each of these tests gets `@pytest.mark.known_bug` and a `# CHARACTERIZATION: cha
 ## Roadmap updates (done in this item)
 - R1 becomes: "…and the proxy strips client identity, DPoP and `Cookie` headers".
 - Add after R16: `- [ ] R17 [S] BFF proxy filters upstream response headers (hop-by-hop, content-encoding/content-length) instead of copying them verbatim`.
+- Add after R17: `- [ ] R18 [S] BFF generates a fresh DPoP key pair per session at callback instead of sharing one process-wide key`.
 - Tick F2 when done.
 
 ## Acceptance criteria

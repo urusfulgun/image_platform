@@ -87,9 +87,11 @@ def test_success_stores_session_that_round_trips(
     )
 
 
+@pytest.mark.known_bug
 def test_every_session_shares_the_process_key_pair(
     client, app_state, fake_redis, exchange_code
 ):
+    # CHARACTERIZATION: changes in R18 (a fresh DPoP key pair per session)
     fake_redis.data["pkce:a"] = "verifier-a"
     fake_redis.data["pkce:b"] = "verifier-b"
 

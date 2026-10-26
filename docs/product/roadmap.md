@@ -42,6 +42,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [ ] R15 [M] Idempotent image processing with deterministic output keys (no orphans or duplicate emails on redelivery)
 - [ ] R16 [M] Frontend auth cleanup: drop the `Bearer null` interceptor, use relative API URLs, add route guards
 - [ ] R17 [S] BFF proxy filters upstream response headers (hop-by-hop, `content-encoding`/`content-length`) instead of copying them verbatim
+- [ ] R18 [S] BFF generates a fresh DPoP key pair per session at callback instead of sharing one process-wide key
 
 ## Phase 3: New features
 
