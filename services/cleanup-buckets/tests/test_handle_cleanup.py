@@ -4,8 +4,8 @@ import logging
 
 import pytest
 from botocore.exceptions import ClientError
-from shared_core.events.kafka_events import ImageDeletedEvent
 
+from shared_core.events.kafka_events import ImageDeletedEvent
 from tests.conftest import S3_CONFIG
 
 

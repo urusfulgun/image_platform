@@ -1,12 +1,11 @@
 """Tests for Kafka event schemas."""
 
 import uuid
-from datetime import datetime, timezone
 
 from shared_core.events.kafka_events import (
-    ImageRawUploadedEvent,
-    ImageAvifReadyEvent,
     CleanupRequestedEvent,
+    ImageAvifReadyEvent,
+    ImageRawUploadedEvent,
 )
 from shared_core.schemas.debezium.events import KeycloakUserEvent
 

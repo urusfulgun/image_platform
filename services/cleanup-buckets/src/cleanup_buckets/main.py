@@ -2,16 +2,17 @@ import asyncio
 import json
 import logging
 import signal
-import aioboto3
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from aiobotocore.config import AioConfig
-from shared_core.events.kafka_events import (
-    ImageDeletedEvent,
-    DLQImageProcessingEventPayload,  # Reusing payload for consistency
-)
-from fastapi import FastAPI, Response, status
-import uvicorn
 
+import aioboto3
+import uvicorn
+from aiobotocore.config import AioConfig
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from fastapi import FastAPI, Response, status
+
+from shared_core.events.kafka_events import (
+    DLQImageProcessingEventPayload,  # Reusing payload for consistency
+    ImageDeletedEvent,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("KafkaCleanupWorker")

@@ -1,12 +1,13 @@
 """Tests for shadow user sync from Keycloak CDC events."""
 
 import uuid
+
 import pytest
 from sqlalchemy.dialects.postgresql import Insert
 from sqlalchemy.sql import Delete
 
-from shared_core.schemas.debezium.events import KeycloakUserEvent
 from asset_service.kafka.user_sync_handler import UserEventOrchestrator
+from shared_core.schemas.debezium.events import KeycloakUserEvent
 
 
 def make_event(

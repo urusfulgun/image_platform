@@ -5,28 +5,26 @@ import uuid
 from pathlib import PurePosixPath
 from typing import Annotated
 
-from fastapi.responses import JSONResponse
-from shared_core.utils.endpoint.rs_dpop import validate_dpop
-from shared_core.utils.s3_object_key import get_s3_object_key
-
-from asset_service.api.schemas import PresignRequest, PresignResponse
-from asset_service.dependencies.clients import get_kafka_producer
-from asset_service.dependencies.domain import get_image_service, get_project_service
-from asset_service.kafka.producer import AssetKafkaProducer
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from asset_service.api.deps import get_local_user
+from asset_service.api.schemas import PresignRequest, PresignResponse
 from asset_service.db.models import ImageMetadataModel, UserModel
+from asset_service.dependencies.clients import get_kafka_producer
+from asset_service.dependencies.domain import get_image_service, get_project_service
 from asset_service.domain.images import ImageService
 from asset_service.domain.projects import ProjectService
+from asset_service.kafka.producer import AssetKafkaProducer
 from asset_service.s3.client import generate_upload_presigned_url
+from shared_core.errors import ForbiddenError, NotFoundError
 from shared_core.events.kafka_events import ImageDeletedEvent, ImageRawUploadedEvent
-from shared_core.errors import NotFoundError, ForbiddenError
 from shared_core.models.image import (
+    ImageSchema,
     ImageSchemaPreview,
     RegisterImageRequest,
-    ImageSchema,
 )
+from shared_core.utils.endpoint.rs_dpop import validate_dpop
+from shared_core.utils.s3_object_key import get_s3_object_key
 
 router = APIRouter(prefix="/projects/{project_id}/images", tags=["images"])
 

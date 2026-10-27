@@ -2,6 +2,7 @@ import base64
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+
 from shared_core.dto.key_pair import KeyPair
 from shared_core.schemas.security.key_pair import ECKeyPairModel
 

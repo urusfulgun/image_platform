@@ -3,18 +3,19 @@ import io
 import json
 import logging
 import signal
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from aiobotocore.config import AioConfig
-from PIL import Image, ImageFile
+
 import aioboto3
-from fastapi import FastAPI, Response, status
 import uvicorn
+from aiobotocore.config import AioConfig
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from fastapi import FastAPI, Response, status
+from PIL import Image, ImageFile
+
 from shared_core.events.kafka_events import (
     DLQImageProcessingEventPayload,
     ImageAvifReadyEvent,  # Note: You may need to update this schema to include preview_s3_path
     ImageRawUploadedEvent,
 )
-
 from shared_core.utils.s3_object_key import get_s3_object_key
 
 logging.basicConfig(level=logging.INFO)

@@ -1,14 +1,16 @@
 import asyncio
 import json
 import logging
-import signal
 import os
+import signal
+from email.message import EmailMessage
+
+import uvicorn
 from aiokafka import AIOKafkaConsumer
 from aiosmtplib import send
-from email.message import EmailMessage
-from shared_core.events.kafka_events import ImageAvifReadyEvent
 from fastapi import FastAPI, Response, status
-import uvicorn
+
+from shared_core.events.kafka_events import ImageAvifReadyEvent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("NotificationWorker")

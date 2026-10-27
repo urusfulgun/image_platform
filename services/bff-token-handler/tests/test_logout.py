@@ -6,12 +6,12 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from fastapi.testclient import TestClient
 from keycloak import KeycloakPostError
-from shared_core.schemas.security.token_set import TokenSet
-from shared_core.schemas.security.user_session import UserSession
 
 from bff_token_handler import main
 from bff_token_handler.auth.dpop import generate_ec_key_pair
 from bff_token_handler.settings import settings
+from shared_core.schemas.security.token_set import TokenSet
+from shared_core.schemas.security.user_session import UserSession
 
 SESSION_ID = "test-session-id"
 

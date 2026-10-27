@@ -1,11 +1,12 @@
+from asset_service.lifespans.image_status import lifespan as image_update_lifespan
 from asset_service.lifespans.kafka import (
     kafka_events_consumer_lifespan as kafka_user_events_consumer,
+)
+from asset_service.lifespans.kafka import (
     kafka_events_producer_lifespan,
 )
 from asset_service.lifespans.lifespan_manager import LifespanManager
 from asset_service.lifespans.s3 import s3_client_lifespan
-from asset_service.lifespans.image_status import lifespan as image_update_lifespan
-
 
 lifespan_manager = LifespanManager()
 

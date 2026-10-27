@@ -17,10 +17,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from keycloak import KeycloakAuthenticationError, KeycloakError, KeycloakOpenID
-from shared_core.dto.key_pair import KeyPair
-from shared_core.schemas.responses.profile import UserProfileResponse
-from shared_core.schemas.security.token_set import TokenSet
-from shared_core.schemas.security.user_session import UserSession
 
 from bff_token_handler.auth.dpop import decode_jwt_token, generate_ec_key_pair
 from bff_token_handler.auth.oauth import (
@@ -40,6 +36,10 @@ from bff_token_handler.session.redis_store import (
     get_session_store,
 )
 from bff_token_handler.settings import keycloak_config, settings
+from shared_core.dto.key_pair import KeyPair
+from shared_core.schemas.responses.profile import UserProfileResponse
+from shared_core.schemas.security.token_set import TokenSet
+from shared_core.schemas.security.user_session import UserSession
 
 # --- Temporary in-memory store for PKCE state/verifier (per-request) ---
 # In production use Redis with short TTL; fine for demo.

@@ -5,8 +5,8 @@ import uuid
 from unittest.mock import AsyncMock
 
 import pytest
-from shared_core.events.kafka_events import ImageAvifReadyEvent
 
+from shared_core.events.kafka_events import ImageAvifReadyEvent
 from tests.fakes import FakeConsumer
 
 # `email_notification.main` is also the name of a stub function in the package

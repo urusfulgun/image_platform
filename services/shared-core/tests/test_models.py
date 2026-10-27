@@ -1,16 +1,15 @@
 """Tests for shared-core Pydantic models."""
 
 import uuid
-from datetime import datetime, timezone
-import pytest
+from datetime import UTC, datetime
 
-from shared_core.models.user import UserSchema
-from shared_core.models.project import ProjectSchema, ProjectStatus
 from shared_core.models.image import ImageSchema, ImageStatus
+from shared_core.models.project import ProjectSchema, ProjectStatus
+from shared_core.models.user import UserSchema
 
 
 def test_user_schema_roundtrip():
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     user = UserSchema(
         id=uuid.uuid4(),
         kc_sub=uuid.uuid4(),
@@ -30,7 +29,7 @@ def test_project_status_enum():
 
 
 def test_project_schema_defaults():
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     project = ProjectSchema(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
@@ -47,7 +46,7 @@ def test_image_status_enum():
 
 
 def test_image_schema_optional_fields():
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     img = ImageSchema(
         id=uuid.uuid4(),
         project_id=uuid.uuid4(),

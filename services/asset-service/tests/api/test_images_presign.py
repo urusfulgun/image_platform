@@ -6,9 +6,9 @@ import uuid
 import pytest
 import pytest_asyncio
 from helpers import user_headers
-from shared_core.events.kafka_events import ImageRawUploadedEvent
 
 from asset_service.db.models import ImageMetadataModel
+from shared_core.events.kafka_events import ImageRawUploadedEvent
 
 
 def presign_url(project_id) -> str:

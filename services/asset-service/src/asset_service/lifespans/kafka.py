@@ -1,12 +1,12 @@
 # --- Lifespan Context Manager ---
 import asyncio
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
-from asset_service.kafka.producer import AssetKafkaProducer
 from fastapi import FastAPI
-from asset_service.kafka.consumer import consume_user_events
 
+from asset_service.kafka.consumer import consume_user_events
+from asset_service.kafka.producer import AssetKafkaProducer
 
 log = logging.getLogger(__name__)
 

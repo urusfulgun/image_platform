@@ -1,10 +1,8 @@
 import base64
 from typing import Annotated
 
-from pydantic import BaseModel, PlainSerializer, SecretStr, field_validator
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-
+from pydantic import BaseModel, PlainSerializer, SecretStr, field_validator
 
 # This tells Pydantic: "When turning this into JSON, use the raw string value"
 SecretStringRaw = Annotated[
@@ -30,7 +28,7 @@ class ECKeyPairModel(BaseModel):
             serialization.load_pem_private_key(pem_bytes, password=None)
             return v
         except Exception as e:
-            raise ValueError(f"Invalid Private Key Data: {str(e)}")
+            raise ValueError(f"Invalid Private Key Data: {e!s}")
 
     @field_validator("public_key_b64")
     @classmethod
@@ -40,4 +38,4 @@ class ECKeyPairModel(BaseModel):
             serialization.load_pem_public_key(pem_bytes)
             return v
         except Exception as e:
-            raise ValueError(f"Invalid Public Key Data: {str(e)}")
+            raise ValueError(f"Invalid Public Key Data: {e!s}")

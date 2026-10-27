@@ -6,8 +6,8 @@ from datetime import datetime
 
 import pytest
 from pydantic import ValidationError
-from shared_core.events.kafka_events import ImageDeletedEvent
 
+from shared_core.events.kafka_events import ImageDeletedEvent
 from tests.fakes import msg
 
 STARTED = ["consumer.start", "producer.start"]

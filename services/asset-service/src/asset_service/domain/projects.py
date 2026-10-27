@@ -1,14 +1,14 @@
 """Project domain services."""
 
 import uuid
-from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from asset_service.db.models import ProjectModel
-from shared_core.errors import NotFoundError, ForbiddenError
-from shared_core.models.project import ProjectSchema, CreateProjectRequest
+from shared_core.errors import ForbiddenError, NotFoundError
+from shared_core.models.project import CreateProjectRequest
 
 
 class ProjectService:

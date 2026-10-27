@@ -2,12 +2,12 @@ import base64
 import hashlib
 import json
 import logging
+
 import jwt
 import jwt.algorithms
-from keycloak import KeycloakOpenID
-from fastapi import HTTPException, Request
-from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
+from fastapi import HTTPException, Request
+from keycloak import KeycloakOpenID
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -76,7 +76,7 @@ async def validate_dpop(request: Request):
         # token_algs = ["ES256"]
 
         # log.info(f"Token algorithm aquared from keycloak is {token_alg}")
-        log.info(f"Token key obj {str(type(key_obj))}")
+        log.info(f"Token key obj {type(key_obj)!s}")
 
         decoded_token = keycloak_openid.decode_token(token)
 
@@ -126,12 +126,12 @@ async def validate_dpop(request: Request):
 
         if proof_payload.get("htm") != request.method:
             log.warning(
-                f"DPoP method mismatch. Expected {proof_payload.get('htm')} as statet in claims. Got {str(request.method)}"
+                f"DPoP method mismatch. Expected {proof_payload.get('htm')} as statet in claims. Got {request.method!s}"
             )
             raise HTTPException(401, "DPoP 'htm' mismatch")
 
     except Exception as e:
-        log.warning(f"Security validation failed: {str(e)}")
-        raise HTTPException(401, f"DPoP Validation Failed: {str(e)}")
+        log.warning(f"Security validation failed: {e!s}")
+        raise HTTPException(401, f"DPoP Validation Failed: {e!s}")
 
     return decoded_token

@@ -1,14 +1,14 @@
 import io
-import json
 import uuid
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from PIL import Image, UnidentifiedImageError
-from shared_core.events.kafka_events import ImageRawUploadedEvent
+
 from image_processor.main import (
     KafkaImageWorker,
 )  # Change this to your actual module path
-
+from shared_core.events.kafka_events import ImageRawUploadedEvent
 
 # --- Fixtures ---
 

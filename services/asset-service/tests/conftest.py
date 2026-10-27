@@ -1,8 +1,9 @@
 """Pytest configuration for AssetService tests."""
 
-import pytest
 import uuid
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 def pytest_configure(config):

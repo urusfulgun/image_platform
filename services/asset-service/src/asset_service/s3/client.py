@@ -1,7 +1,6 @@
 """S3 client wrapper for RustFS (S3-compatible)."""
 
 import logging
-from typing import Optional
 
 import boto3
 from botocore.config import Config
@@ -78,7 +77,7 @@ def generate_upload_presigned_url(
 
 
 def generate_download_presigned_url(
-    key: str, bucket: Optional[str] = None, expiry: int = 3600
+    key: str, bucket: str | None = None, expiry: int = 3600
 ) -> str:
     """Generate a pre-signed URL for downloading a processed image."""
     client = get_s3_client()

@@ -1,13 +1,13 @@
-from abc import ABC, abstractmethod
 import logging
-
-from shared_core.schemas.debezium.events import KeycloakUserEvent
-from asset_service.db import models
+from abc import ABC, abstractmethod
 
 # from sqlalchemy import insert
 from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from asset_service.db import models
+from shared_core.schemas.debezium.events import KeycloakUserEvent
 
 log = logging.getLogger(__name__)
 

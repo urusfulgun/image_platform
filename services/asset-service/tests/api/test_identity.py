@@ -4,9 +4,9 @@ import uuid
 
 import pytest
 from helpers import user_headers
-from shared_core.utils.endpoint.rs_dpop import validate_dpop
 
 from asset_service.main import app
+from shared_core.utils.endpoint.rs_dpop import validate_dpop
 
 
 @pytest.mark.asyncio

@@ -1,13 +1,13 @@
 import logging
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+
 from asset_service.dependencies.clients import get_kafka_producer
 from asset_service.dependencies.domain import get_image_service
 from asset_service.domain.images import ImageService
 from asset_service.kafka.producer import AssetKafkaProducer
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
 from shared_core.events.kafka_events import ImageRawUploadedEvent
-
 
 router = APIRouter(prefix="/callback", tags=["callbacks"])
 

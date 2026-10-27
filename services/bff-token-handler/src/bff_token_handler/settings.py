@@ -1,6 +1,5 @@
 """BFF Token Handler settings."""
 
-from pydantic import Field
 from shared_core.schemas.security.config import KeyCloakOpenIDConfig
 from shared_core.settings import BaseAppSettings
 

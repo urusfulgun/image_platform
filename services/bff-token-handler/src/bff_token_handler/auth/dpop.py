@@ -12,6 +12,7 @@ import time
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, utils
+
 from shared_core.dto.key_pair import KeyPair
 
 COORD_LEN = 32
@@ -115,9 +116,7 @@ def _decode_json_segment(segment: str) -> dict:
     value = json.loads(_b64url_decode(segment))
     if not isinstance(value, dict):
         # Malformed token content, not a caller type error
-        raise ValueError(  # noqa: TRY004
-            "Invalid token format. Expected a JSON object segment."
-        )
+        raise ValueError("Invalid token format. Expected a JSON object segment.")
     return value
 
 

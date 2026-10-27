@@ -3,18 +3,18 @@ import io
 import json
 import logging
 import signal
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from aiobotocore.config import AioConfig
-from PIL import Image, ImageFile
+
 import aioboto3
+from aiobotocore.config import AioConfig
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from PIL import Image, ImageFile
+
 from shared_core.events.kafka_events import (
     DLQImageProcessingEventPayload,
     ImageAvifReadyEvent,
     ImageRawUploadedEvent,
 )
-
 from shared_core.utils.s3_object_key import (
-    get_new_s3_path,
     get_s3_object_key,
 )
 

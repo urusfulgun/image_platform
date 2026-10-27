@@ -4,12 +4,13 @@ Stores serialized TokenSet by session ID so the browser
 never receives or sees an access token.
 """
 
-import json
 import secrets
 from abc import ABC, abstractmethod
 from string.templatelib import Interpolation, Template
 
 import redis.asyncio as aioredis
+
+from bff_token_handler.settings import settings
 from shared_core.dto.key_pair import KeyPair
 from shared_core.schemas.security.session_data import SessionData
 from shared_core.schemas.security.token_set import TokenSet
@@ -18,8 +19,6 @@ from shared_core.utils.key_pair_marshalling import (
     marshalling_key_pair,
     unmarshalling_key_pair_from_model,
 )
-
-from bff_token_handler.settings import settings
 
 
 async def redis_key_tag(it: Template) -> str:

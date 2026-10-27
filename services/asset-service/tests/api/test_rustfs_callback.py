@@ -3,9 +3,9 @@
 import pytest
 import pytest_asyncio
 from helpers import WEBHOOK_TOKEN, later
-from shared_core.events.kafka_events import ImageRawUploadedEvent
 
 from asset_service.db.models import ImageMetadataModel
+from shared_core.events.kafka_events import ImageRawUploadedEvent
 
 AUTH = {"Authorization": f"Bearer {WEBHOOK_TOKEN}"}
 

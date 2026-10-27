@@ -1,14 +1,13 @@
 """FastAPI dependency injection helpers."""
 
 import uuid
-from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from asset_service.db.session import get_db
 from asset_service.db.models import UserModel
-from sqlalchemy import select
+from asset_service.db.session import get_db
 
 
 async def get_current_user_id(request: Request) -> uuid.UUID:

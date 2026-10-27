@@ -12,7 +12,6 @@ import httpx
 import pytest
 import pytest_asyncio
 from helpers import BASE_URL, T0
-from shared_core.utils.endpoint.rs_dpop import validate_dpop
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -26,6 +25,7 @@ from asset_service.db.models import (
 from asset_service.db.session import get_db
 from asset_service.kafka.producer import AssetKafkaProducer
 from asset_service.main import app
+from shared_core.utils.endpoint.rs_dpop import validate_dpop
 
 
 def fake_presigned_url(op: str, Params: dict, ExpiresIn: int) -> str:

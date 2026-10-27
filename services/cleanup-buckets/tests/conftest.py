@@ -4,8 +4,8 @@ import importlib
 import uuid
 
 import pytest
-from shared_core.events.kafka_events import ImageDeletedEvent
 
+from shared_core.events.kafka_events import ImageDeletedEvent
 from tests.fakes import FakeConsumer, FakeProducer, FakeS3Session
 
 # `cleanup_buckets.main` is also the name of a stub function in the package

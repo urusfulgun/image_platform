@@ -2,6 +2,7 @@
 
 import pytest
 import pytest_asyncio
+
 from shared_core.events.kafka_events import ImageAvifReadyEvent
 
 

@@ -5,7 +5,6 @@ DPoP proof and the access token retrieved from the session store.
 """
 
 import logging
-from typing import Optional
 
 import httpx
 from fastapi import Request, Response
@@ -34,7 +33,7 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
     """
     session_store: SessionStore = request.app.state.session_store
     # --- Resolve session ---
-    session_id: Optional[str] = request.cookies.get(settings.session_cookie_name)
+    session_id: str | None = request.cookies.get(settings.session_cookie_name)
     if not session_id:
         return Response(
             content='{"detail":"Not authenticated"}',
@@ -82,7 +81,7 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
     # --- Stream body ---
     body = await request.body()
 
-    log.info(f"SID ---> {str(session_id)}")
+    log.info(f"SID ---> {session_id!s}")
     log.info(f"Forward headers: {forward_headers}")
 
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -93,7 +92,7 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
             content=body,
         )
 
-    log.info(f"PROXY RESPONSE ---> {str(upstream_resp)}")
+    log.info(f"PROXY RESPONSE ---> {upstream_resp!s}")
 
     return Response(
         content=upstream_resp.content,
