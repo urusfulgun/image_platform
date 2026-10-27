@@ -22,11 +22,14 @@ class AssetSettings(BaseAppSettings):
 
     # S3 / RustFS
     s3_endpoint_url: str = "http://rustfs:9000"
-    s3_access_key: str = "OAhzGogEY7X61ZwjnSmH"
-    s3_secret_key: str = "5XItB3Pon6syp7e1cxNvJOTfWlzigEZQkK2FM8Vh"
+    # Required: set S3_ACCESS_KEY / S3_SECRET_KEY.
+    s3_access_key: str
+    s3_secret_key: str
     s3_region: str = "us-east-1"
     raw_bucket: str = "raw-images"
     processed_bucket: str = "processed-images"
+    # Required: set RUSTFS_WEBHOOK_TOKEN. Must match the RustFS webhook auth_token.
+    rustfs_webhook_token: str
 
     # KeyCloak (for token validation)
     keycloak_url: str = "http://keycloak:8080"

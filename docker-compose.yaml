@@ -264,6 +264,8 @@ services:
       - S3_ENDPOINT_URL=http://rustfs:9000
       - S3_ACCESS_KEY=rustfsadmin
       - S3_SECRET_KEY=rustfspassword
+      # Must match the auth_token of the RustFS webhook target.
+      - RUSTFS_WEBHOOK_TOKEN=${RUSTFS_WEBHOOK_TOKEN:-your-secure-shared-secret}
       - RAW_BUCKET=raw-images
       - PROCESSED_BUCKET=processed-images
       - KEYCLOAK_URL=http://keycloak:8080

@@ -1,11 +1,12 @@
 """Constants and helpers shared by the API characterization tests."""
 
+import os
 from datetime import UTC, datetime, timedelta
 
 from asset_service.db.models import UserModel
 
 BASE_URL = "http://asset-service"
-WEBHOOK_TOKEN = "your-secure-shared-secret"
+WEBHOOK_TOKEN = os.environ["RUSTFS_WEBHOOK_TOKEN"]
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 

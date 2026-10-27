@@ -7,7 +7,7 @@ Spec: [spec.md](spec.md)
 - [x] 3. Run `ruff format services`. Run every suite, then commit the format-only change: `style: apply ruff format`.
 - [x] 4. Run `ruff check --fix services` (safe fixes only). Run every suite. Commit.
 - [x] 5. Fix by hand: E501, B904, E712 (`.is_(False)`), SIM105, RUF059, and the lifespan `print` → `log.info`. Run every suite.
-- [ ] 6. asset-service secrets:
+- [x] 6. asset-service secrets:
   - make the S3 key fields required
   - `get_s3_client` uses settings
   - add a `rustfs_webhook_token` setting, used in `s3_callbacks`

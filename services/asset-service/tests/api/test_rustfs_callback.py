@@ -196,11 +196,28 @@ async def test_wrong_token_is_403(client, kafka_producer):
     kafka_producer.publish_image_raw_uploaded.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_webhook_token_comes_from_settings(client, monkeypatch):
+    from asset_service.settings import settings
+
+    monkeypatch.setattr(settings, "rustfs_webhook_token", "rotated-token")
+
+    old = await client.post("/callback/rustfs", json={"Records": []}, headers=AUTH)
+    new = await client.post(
+        "/callback/rustfs",
+        json={"Records": []},
+        headers={"Authorization": "Bearer rotated-token"},
+    )
+
+    assert old.status_code == 403
+    assert new.status_code == 200
+
+
 @pytest.mark.known_bug
 @pytest.mark.asyncio
-async def test_hardcoded_secret_is_accepted_with_any_scheme(client):
-    # CHARACTERIZATION: changes in R2 / R4. The secret is a module constant, the
-    # scheme before the space is never checked, and the compare is a plain !=.
+async def test_secret_is_accepted_with_any_scheme(client):
+    # CHARACTERIZATION: changes in R4. The scheme before the space is never checked,
+    # and the compare is a plain !=.
     resp = await client.post(
         "/callback/rustfs",
         json={"Records": []},

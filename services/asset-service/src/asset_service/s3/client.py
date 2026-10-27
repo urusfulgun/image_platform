@@ -30,10 +30,10 @@ def get_s3_client():
     s3 = boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint_url,
-        aws_access_key_id="OAhzGogEY7X61ZwjnSmH",
-        aws_secret_access_key="5XItB3Pon6syp7e1cxNvJOTfWlzigEZQkK2FM8Vh",
+        aws_access_key_id=settings.s3_access_key,
+        aws_secret_access_key=settings.s3_secret_key,
         config=Config(signature_version="s3v4"),
-        region_name="us-east-1",
+        region_name=settings.s3_region,
     )
     return s3
 
