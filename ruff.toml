@@ -1,0 +1,34 @@
+# Shared ruff config for every Python service (roadmap F5).
+# Ruff finds this file from any service directory; services add no [tool.ruff].
+required-version = ">=0.17.2"
+target-version = "py314"
+line-length = 88
+extend-exclude = ["services/frontend"]
+
+[lint]
+# Explicit, so a ruff upgrade does not change the rule set.
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF", "S", "T20", "ASYNC"]
+
+[lint.per-file-ignores]
+# Tests use plain asserts and fake secrets.
+"services/*/tests/**" = ["S101", "S105", "S106"]
+
+[lint.flake8-bugbear]
+# FastAPI dependency markers in argument defaults are the intended idiom.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Header",
+    "fastapi.Body",
+    "fastapi.File",
+]
+
+[lint.isort]
+known-first-party = [
+    "asset_service",
+    "bff_token_handler",
+    "cleanup_buckets",
+    "email_notification",
+    "image_processor",
+    "shared_core",
+]
