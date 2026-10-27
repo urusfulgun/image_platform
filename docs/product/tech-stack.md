@@ -11,7 +11,7 @@ Last reviewed: 2026-10-27. "Current" is verified from lock files, compose and Do
 | Python (devcontainer) | 3.14.8 | `.devcontainer/devcontainer.json` |
 | uv | `ghcr.io/astral-sh/uv:latest` in Dockerfiles (floating); build backend `uv_build >=0.10,<0.11` | Dockerfiles / pyproject |
 | TypeScript | 5.9.3 | bun.lock |
-| Bun | 1.3.9 (`packageManager`); build image `oven/bun:1` (floating minor) | package.json / nginx-proxy.Dockerfile |
+| Bun | 1.3.9 (`packageManager`, devcontainer install); build image `oven/bun:1` (floating minor) | package.json / `.devcontainer/devcontainer.json` / nginx-proxy.Dockerfile |
 
 ### Python services (locked versions)
 | Library | asset-service | bff-token-handler | workers (image-processor, email-notification, cleanup-buckets) | shared-core |
@@ -30,7 +30,7 @@ Last reviewed: 2026-10-27. "Current" is verified from lock files, compose and Do
 Dependency constraints are `>=` only, without upper bounds; only `uv.lock` pins versions. `shared-core` is an editable path dependency of every service.
 
 ### Frontend (`services/frontend`)
-Angular 21.1.5 (core, Material/CDK 21.1.5; CLI/build 21.1.4), standalone + zoneless, signals for state, rxjs 7.8.2, Tailwind 4.2.0, @transcend-io/conflux 6.1.3 (ZIP download). Tests: Vitest 4.0.18 + jsdom 27.4.0 (1 spec, broken), Playwright 1.64.0 (e2e with mocked BFF).
+Angular 21.1.5 (core, Material/CDK 21.1.5; CLI/build 21.1.4), standalone + zoneless, signals for state, rxjs 7.8.2, Tailwind 4.2.0, @transcend-io/conflux 6.1.3 (ZIP download). Tests: Vitest 4.0.18 + jsdom 27.4.0 (1 spec, `app.spec.ts`, passing), Playwright 1.64.0 (e2e with mocked BFF).
 
 ### Infrastructure (docker-compose)
 | Component | Image |
@@ -62,7 +62,7 @@ Angular 21.1.5 (core, Material/CDK 21.1.5; CLI/build 21.1.4), standalone + zonel
 - **CI**: GitHub Actions, using a per-service matrix to run ruff, mypy and pytest for the Python services, and the build, Vitest and Playwright for the frontend, on every PR.
 - **Lint/format**: one shared root `ruff.toml` with an agreed rule set, enforced in CI.
 - **Type checking**: `mypy --strict` per service, enforced in CI. Existing errors get fixed gradually.
-- **Tests**: add `[tool.pytest.ini_options]` and `pytest-cov` to each service. Every service must have tests. Fix the broken Vitest spec. The stack stays pytest, Vitest and Playwright.
+- **Tests**: add `[tool.pytest.ini_options]` and `pytest-cov` to each service. Every service must have tests. The stack stays pytest, Vitest and Playwright.
 - **Dependency updates**: Renovate or Dependabot opens PRs for `uv.lock`, `bun.lock` and Docker image tags, and CI gates them.
 - **DB schema**: Alembic migrations for asset-service replace the `init-db` SQL.
 
