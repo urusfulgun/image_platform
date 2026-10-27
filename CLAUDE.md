@@ -62,6 +62,9 @@ uv run --extra dev python ../../scripts/mypy_check.py --update   # rewrite the b
 `make test` (repo root) runs `pytest --cov` in every Python service. Pytest and coverage config live in each `pyproject.toml` (`[tool.pytest.ini_options]`, `[tool.coverage.*]`). `strict_markers` is on, so register new markers there; `known_bug` is already registered. Raise `fail_under` by hand when coverage goes up.
 Async tests use `@pytest.mark.asyncio` explicitly (no `asyncio_mode` configured). Tests mock Redis, DB, Kafka and S3 with `AsyncMock`/`pytest-mock` and don't need the running stack.
 
+### CI
+`.github/workflows/ci.yml` runs on PRs and pushes to `main`. It runs ruff from the root, then for each Python service `uv sync --locked --extra dev`, the mypy baseline check and `pytest --cov`, then the frontend build, `bun run test --watch=false` and Playwright. `--locked` fails on a stale `uv.lock`. Actions are pinned to commit SHAs with a version comment. Keep that format when bumping them.
+
 ### Frontend (Angular 21 + Bun)
 ```bash
 cd services/frontend

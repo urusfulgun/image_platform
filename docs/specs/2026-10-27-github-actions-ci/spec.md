@@ -45,6 +45,13 @@ Latest release of each action on 2026-10-27, resolved to its commit with `git ls
 
 All four run on `node24`. The inputs the workflow uses (`version`, `enable-cache`, `cache-dependency-glob`, `bun-version-file`, `retention-days`, `if-no-files-found`) were checked against each pinned `action.yml`.
 
+## CI runs (2026-10-27)
+- **First run** on PR head `b0be894` (run 40518533980): all 9 jobs passed. The mypy baselines match on 3.14.2 in CI too, so acceptance criterion 7 needed no change.
+- **Hand check** with `d214b2d`, which adds `tests/test_ci_hand_check.py` to email-notification with `assert 1 == 2` (run 40519455158): only `python (email-notification)` failed, and the other 8 jobs passed. That confirms `fail-fast: false`. The leg failed at its **mypy** step, not at pytest: strict mode reports `Non-overlapping equality check [comparison-overlap]` on the literal comparison, so the pytest step was skipped. Locally the same file fails both the mypy check and pytest. As built, a leg stops at its first failing check, so a PR that breaks both types and tests only shows the mypy failure until it is fixed.
+- **Revert** `9ff2d29` (`git revert` of `d214b2d`, run 40519791913): 8 jobs passed. `python (image-processor)` stayed queued with no runner and no steps, yet GitHub reported the run as `completed / success`. So the run's conclusion alone doesn't prove every job passed; check each job.
+- **Closing docs commit** (`docs: close F8 GitHub Actions CI`): its run is the first one after the revert in which all 9 jobs ran. The result is recorded below.
+- Branch protection is still to do: the owner should mark the CI jobs as required checks on `main` by hand (see Non-goals).
+
 ## Non-goals
 - pip-audit, Trivy, CodeQL or other scanning (F11). Dependabot or Renovate for actions, locks and images (F10).
 - Building or pushing Docker images. Running the compose stack or a smoke test (F17).

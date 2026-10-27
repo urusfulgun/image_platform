@@ -7,6 +7,6 @@
 - [x] 5. Add the `e2e` job (browser install, `bun run e2e`, upload the report on failure).
 - [x] 6. Run `actionlint` (for example `uvx --from actionlint-py actionlint`) and fix any findings.
 - [x] 7. Run every job's commands locally (acceptance criterion 4).
-- [ ] 8. Ask before pushing. Then push the branch, open a draft PR and get every job green, fixing anything that only fails in CI (for example a mypy baseline difference on 3.14.2) and recording it in the spec.
-- [ ] 9. Hand check: push a scratch commit that breaks one service, check that only its leg fails, then revert it.
-- [ ] 10. Update the roadmap (tick F8), `tech-stack.md` (CI, the "Not enforced yet" notes, Target) and `CLAUDE.md` (CI line). Note branch protection as a manual follow-up.
+- [x] 8. Ask before pushing. Then push the branch, open a draft PR and get every job green, fixing anything that only fails in CI (for example a mypy baseline difference on 3.14.2) and recording it in the spec.
+- [x] 9. Hand check: push a scratch commit that breaks one service, check that only its leg fails, then revert it.
+- [x] 10. Update the roadmap (tick F8), `tech-stack.md` (CI, the "Not enforced yet" notes, Target) and `CLAUDE.md` (CI line). Note branch protection as a manual follow-up.
