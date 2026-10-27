@@ -22,7 +22,8 @@ Items run in order within each phase. Characterization tests come first so that 
 - [ ] F14 [S] Replace `provectuslabs/kafka-ui` with `kafbat/kafka-ui`
 - [ ] F15 [S] Drop `pillow-avif-plugin` and use Pillow's built-in AVIF support
 - [x] F16 [S] Fix the init SQL (missing commas) so a fresh install works
-- [ ] F17 [M] End-to-end smoke test against the running stack (pytest + Playwright): login through Keycloak and the BFF, upload an image until it is `OPTIMIZED`, and check each worker's `/health`. Credentials come from env until N9.
+- [ ] F17 [M] End-to-end smoke test against the running stack (pytest + Playwright): login through Keycloak and the BFF, upload an image until it is `OPTIMIZED`, and check each worker's `/health`. Credentials come from env until N9. (A Keycloak user `smoke-test` and a throwaway Node Playwright script from the F5 check already exist as a starting point. Needs F18 for the upload to reach `OPTIMIZED` without a hand-sent webhook.)
+- [ ] F18 [S] Provision the RustFS webhook target and the `raw-images` ObjectCreated/ObjectRemoved notification as code (for example a one-shot init container, like `debezium-configurator`), using `RUSTFS_WEBHOOK_TOKEN`. Today neither exists, so uploads stay `PENDING`.
 
 ## Phase 2: Refactors
 
@@ -45,6 +46,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [ ] R17 [S] BFF proxy filters upstream response headers (hop-by-hop, `content-encoding`/`content-length`) instead of copying them verbatim
 - [ ] R18 [S] BFF generates a fresh DPoP key pair per session at callback instead of sharing one process-wide key
 - [ ] R19 [S] Workers stop losing failures: S3/SMTP errors and failed DLQ sends go to a DLQ or retry instead of being committed, and `/health` reflects the real consumer state
+- [ ] R20 [S] BFF `/me` stops returning 500 when the ID token's email fails `EmailStr` validation (for example a reserved `.local` domain): accept or relax the field, or return a clean 4xx, and test it
 
 ## Phase 3: New features
 
