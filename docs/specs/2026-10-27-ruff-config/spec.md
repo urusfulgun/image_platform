@@ -28,7 +28,7 @@ Baseline at 88 with this rule set: about 180 lint findings, roughly 120 auto-fix
 ## Findings fixed with a behaviour change
 | Rule | Location | Change |
 |---|---|---|
-| S105/S106 | `asset_service/settings.py` `s3_access_key`, `s3_secret_key` | Required fields with no default. Compose already sets `S3_ACCESS_KEY`/`S3_SECRET_KEY`. |
+| S105/S106 | `asset_service/settings.py` `s3_access_key`, `s3_secret_key` | Required fields with no default. Compose passes the existing RustFS app key (the one the workers use) through `${S3_ACCESS_KEY:-…}`. (Corrected during the build: compose's earlier `rustfsadmin`/`rustfspassword` was never a valid RustFS credential. RustFS ignores `RUSTFS_ROOT_*` and uses the image's `RUSTFS_ACCESS_KEY`/`RUSTFS_SECRET_KEY`.) |
 | S106 | `asset_service/s3/client.py` `get_s3_client` | Build the client from `settings` (endpoint, keys, region) instead of literals |
 | S105 | `asset_service/api/s3_callbacks.py` `RUSTFS_SECRET_TOKEN` | New required `AssetSettings.rustfs_webhook_token` (env `RUSTFS_WEBHOOK_TOKEN`). Compose passes it. The compare logic stays as it is (R4). |
 | S105 | `bff_token_handler/settings.py` `client_secret` | Required, with no default. `BffSettings` gets `secrets_dir="/run/secrets"`. Compose mounts the secret with `target: client_secret`. Remove the unused `CLIENT_SECRET_FILE` env. |

@@ -262,8 +262,9 @@ services:
       - DATABASE_URL=postgresql+asyncpg://asset_admin:dev-asset-password@postgres-asset-metadata:5432/asset_metadata
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - S3_ENDPOINT_URL=http://rustfs:9000
-      - S3_ACCESS_KEY=rustfsadmin
-      - S3_SECRET_KEY=rustfspassword
+      # RustFS access key (the same one the workers use). Dev default until R2.
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-OAhzGogEY7X61ZwjnSmH}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-5XItB3Pon6syp7e1cxNvJOTfWlzigEZQkK2FM8Vh}
       # Must match the auth_token of the RustFS webhook target.
       - RUSTFS_WEBHOOK_TOKEN=${RUSTFS_WEBHOOK_TOKEN:-your-secure-shared-secret}
       - RAW_BUCKET=raw-images
