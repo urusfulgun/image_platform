@@ -1,0 +1,60 @@
+# F8: GitHub Actions CI
+
+## Goal
+Each PR and each push to `main` runs the checks that F5–F7 made available as commands: ruff lint and format, the mypy baseline check, and pytest with coverage floors in all six Python services, plus the frontend build, Vitest and Playwright. The workflow is one file, `.github/workflows/ci.yml`. It is read-only and has no secrets. Runtime code does not change.
+
+## Today
+- No `.github/` directory and no CI.
+- Local commands it reuses: `ruff check .` / `ruff format --check .` (root `ruff.toml`, `required-version >=0.17.2`), `make typecheck` → `scripts/mypy_check.py`, `make test` → `pytest --cov`. Frontend: `bun install`, `bun run build`, `bun run test` (`@angular/build:unit-test`, Vitest), `bun run e2e` (Playwright, `webServer` starts `ng serve` on :4200, BFF mocked through `page.route`. When `CI` is set: `forbidOnly`, 2 retries, 1 worker, list + html reporters).
+- Tests need no stack. Required settings get dummy values from conftests (`CLIENT_SECRET`, `S3_*`, `RUSTFS_WEBHOOK_TOKEN`).
+- Versions: `.python-version` 3.14.2 in every service. The devcontainer uses 3.14.8 through `UV_PYTHON`. uv 0.13.5 locally, `packageManager: bun@1.3.9`, ruff 0.17.2.
+
+## Workflow design (`.github/workflows/ci.yml`)
+- **Triggers:** `pull_request`, `push` to `main`, and `workflow_dispatch`.
+- **`permissions: contents: read`** at the top level. No secrets and no `pull_request_target`.
+- **`concurrency`:** group `ci-${{ github.ref }}`, with `cancel-in-progress` set only for PR refs, so runs on main are never cancelled.
+- **Pinning:** every `uses:` points at a full 40-character commit SHA with a `# vX.Y.Z` comment (checkout, setup-uv, setup-bun, upload-artifact). Tool versions are exact: uv `0.13.5` (setup-uv `version`), ruff `0.17.2`, Bun read from `packageManager` (`bun-version-file: services/frontend/package.json`).
+- **`timeout-minutes`** on every job.
+- **Job `ruff`** (runs once, because the config lives at the root): checkout, setup-uv, then `uvx ruff@0.17.2 check .` and `uvx ruff@0.17.2 format --check .` from the repo root. The roadmap says "matrix (ruff, …)". Running ruff once at the root checks the same files as running it per service, without six copies of the same job.
+- **Job `python`** (matrix `service: [shared-core, asset-service, bff-token-handler, image-processor, email-notification, cleanup-buckets]`, `fail-fast: false`, `defaults.run.working-directory: services/${{ matrix.service }}`):
+  1. checkout; setup-uv with `enable-cache` and `cache-dependency-glob: services/${{ matrix.service }}/uv.lock`
+  2. `uv sync --locked --extra dev`. `--locked` fails when `uv.lock` is stale, which also catches the "forgot `uv lock`" Docker break from CLAUDE.md.
+  3. `uv run --extra dev python ../../scripts/mypy_check.py`
+  4. `uv run --extra dev pytest --cov`
+  - Python comes from `.python-version` (3.14.2), the version the Dockerfiles use, and uv installs it. The devcontainer's 3.14.8 is not copied in. Aligning the versions is F12.
+- **Job `frontend`** (`working-directory: services/frontend`): checkout, setup-bun, `bun install --frozen-lockfile`, `bun run build`, `bun run test -- --watch=false`.
+- **Job `e2e`** (`working-directory: services/frontend`): checkout, setup-bun, `bun install --frozen-lockfile`, `bunx playwright install --with-deps chromium firefox`, `bun run e2e`. GitHub sets `CI=true`, so the existing CI branch of `playwright.config.ts` applies without changes. If the job fails, `playwright-report/` and `test-results/` are uploaded as an artifact with 7-day retention. It is a separate job so that a slow browser install doesn't hold up the build/Vitest result.
+- Jobs run in parallel with no `needs:`.
+
+## Action pins
+Filled in during the build (task 1):
+
+| Action | Version | SHA |
+|---|---|---|
+| `actions/checkout` | | |
+| `astral-sh/setup-uv` | | |
+| `oven-sh/setup-bun` | | |
+| `actions/upload-artifact` | | |
+
+## Non-goals
+- pip-audit, Trivy, CodeQL or other scanning (F11). Dependabot or Renovate for actions, locks and images (F10).
+- Building or pushing Docker images. Running the compose stack or a smoke test (F17).
+- Coverage upload, badges or README changes (N8).
+- Branch protection or required checks. These are GitHub repo settings, not code. After the first green run, the owner should mark the jobs as required checks on `main` by hand.
+- Prettier or ESLint checks for the frontend (no script exists). Caching Playwright browsers.
+- Changing Python to 3.14.8 (F12), or changing `playwright.config.ts`, `Makefile` or any service code.
+
+## Roadmap and doc updates (done in this item)
+- Tick F8 in `roadmap.md`.
+- `tech-stack.md`: **CI** changes to describe the workflow (jobs, triggers, SHA pinning, tool versions). Remove "Not enforced yet (F8)" from Lint/format, Type checking and Tests. In Target Tooling, mark CI as done or trim it to what remains (gating Dependabot PRs is F10).
+- `CLAUDE.md`: a short "CI" line under Commands with `.github/workflows/ci.yml`, what it runs, and the fact that `uv sync --locked` fails on a stale `uv.lock`.
+
+## Acceptance criteria
+1. `.github/workflows/ci.yml` exists with the triggers, `permissions: contents: read`, concurrency and the four jobs (`ruff`, `python` ×6, `frontend`, `e2e`) described above.
+2. Every `uses:` is a 40-hex SHA with a version comment. uv, ruff and Bun versions are exact.
+3. `actionlint` reports no errors for the workflow.
+4. Locally, each job's commands pass from its working directory. Locally this already means `ruff check .`, `ruff format --check .`, `make typecheck`, `make test`, `bun run build`, `bun run test -- --watch=false` and `bun run e2e`.
+5. On GitHub, the workflow runs on a PR from this branch, and every job is green, including all six matrix legs and both Playwright browsers.
+6. Hand check on a scratch commit in that PR (reverted before merge): a new mypy error or a failing test turns the matching matrix leg red while the other legs stay green, which confirms `fail-fast: false`.
+7. If the mypy baseline differs on 3.14.2 in CI compared with the devcontainer, the difference is recorded here with how it was resolved.
+8. The roadmap, `tech-stack.md` and `CLAUDE.md` are updated as listed.
