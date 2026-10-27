@@ -13,9 +13,6 @@ dependencies = [
     "uvicorn>=0.41.0",
 ]
 
-[project.scripts]
-email-notification = "email_notification:main"
-
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.2",

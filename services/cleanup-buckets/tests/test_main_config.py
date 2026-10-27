@@ -4,8 +4,7 @@ The worker class is replaced by a mock that raises, so main() stops before it
 starts the TaskGroup, uvicorn or the signal handlers.
 """
 
-import subprocess
-import sys
+import inspect
 import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -68,17 +67,12 @@ async def test_s3_endpoint_and_credentials_are_hardcoded(worker_kwargs):
     assert s3_config["aws_secret_access_key"] not in ("", "env-secret-key")
 
 
-@pytest.mark.known_bug
-def test_project_script_points_to_hello_world_stub():
-    # CHARACTERIZATION: changes in R12. The Dockerfile runs
-    # `python -m cleanup_buckets.main`; the console script runs a stub.
-    scripts = tomllib.loads(PYPROJECT.read_text())["project"]["scripts"]
-    assert scripts == {"cleanup-buckets": "cleanup_buckets:main"}
+def test_package_has_no_console_script_stub():
+    # The Dockerfile runs `python -m cleanup_buckets.main`; the hello-world stub
+    # is gone. `cleanup_buckets.main` may still exist as the imported submodule.
+    project = tomllib.loads(PYPROJECT.read_text())["project"]
+    assert "scripts" not in project
 
-    result = subprocess.run(
-        [sys.executable, "-c", "import cleanup_buckets; cleanup_buckets.main()"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert result.stdout == "Hello from cleanup-buckets!\n"
+    import cleanup_buckets
+
+    assert not inspect.isfunction(getattr(cleanup_buckets, "main", None))

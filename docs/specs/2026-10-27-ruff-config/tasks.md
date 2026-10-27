@@ -18,7 +18,7 @@ Spec: [spec.md](spec.md)
   - make `client_secret` required, with `secrets_dir="/run/secrets"`
   - compose secret `target: client_secret`, and drop `CLIENT_SECRET_FILE`
   - fake env in `tests/conftest.py`
-- [ ] 8. Workers:
+- [x] 8. Workers:
   - delete the `main()` stubs and `[project.scripts]`, then `uv lock`
   - flip the R12 stub tests
   - `HEALTH_HOST` env with a commented `noqa: S104`

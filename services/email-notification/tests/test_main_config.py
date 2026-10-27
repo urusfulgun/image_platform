@@ -4,8 +4,7 @@ The worker class is replaced by a mock that raises, so main() stops before it
 starts the TaskGroup, uvicorn or the signal handlers.
 """
 
-import subprocess
-import sys
+import inspect
 import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -64,17 +63,12 @@ async def test_values_come_from_env(worker_cls, monkeypatch):
     )
 
 
-@pytest.mark.known_bug
-def test_project_script_points_to_hello_world_stub():
-    # CHARACTERIZATION: changes in R12. The Dockerfile runs
-    # `python -m email_notification.main`; the console script runs a stub.
-    scripts = tomllib.loads(PYPROJECT.read_text())["project"]["scripts"]
-    assert scripts == {"email-notification": "email_notification:main"}
+def test_package_has_no_console_script_stub():
+    # The Dockerfile runs `python -m email_notification.main`; the hello-world stub
+    # is gone. `email_notification.main` may still exist as the imported submodule.
+    project = tomllib.loads(PYPROJECT.read_text())["project"]
+    assert "scripts" not in project
 
-    result = subprocess.run(
-        [sys.executable, "-c", "import email_notification; email_notification.main()"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert result.stdout == "Hello from email-notification!\n"
+    import email_notification
+
+    assert not inspect.isfunction(getattr(email_notification, "main", None))

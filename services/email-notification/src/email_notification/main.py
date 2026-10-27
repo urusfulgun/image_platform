@@ -125,7 +125,9 @@ async def main():
     )
 
     # Setup FastAPI server to run in the background
-    config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="error")
+    # 0.0.0.0 is required so the health port is reachable from outside the container.
+    health_host = os.getenv("HEALTH_HOST", "0.0.0.0")  # noqa: S104
+    config = uvicorn.Config(app, host=health_host, port=8080, log_level="error")
     server = uvicorn.Server(config)
 
     stop_event = asyncio.Event()

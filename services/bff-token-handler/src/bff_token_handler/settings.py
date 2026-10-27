@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from pydantic_settings import SettingsConfigDict
+
 from shared_core.schemas.security.config import KeyCloakOpenIDConfig
 from shared_core.settings import BaseAppSettings
 
