@@ -52,7 +52,7 @@ Angular 21.1.5 (core, Material/CDK 21.1.5; CLI/build 21.1.4), standalone + zonel
 - **DB schema**: `init-db/postgres-image-metadata/*.sql` on first init only; no migrations.
 - **Lint/format**: ruff, run ad hoc; no config file. Version *unverified* (installed as a uv tool, not locked).
 - **Type checking**: mypy in the editor; no config, not enforced. Version *unverified*.
-- **Tests**: pytest 9.0.2, pytest-asyncio 1.3.0, pytest-mock; no pytest config, no coverage. asset-service has API characterization tests (`tests/api/`, httpx ASGITransport against in-memory aiosqlite, with a `known_bug` marker). No tests for cleanup-buckets or email-notification.
+- **Tests**: pytest 9.0.2, pytest-asyncio 1.3.0, pytest-mock; no pytest config, no coverage. asset-service has API characterization tests (`tests/api/`, httpx ASGITransport against in-memory aiosqlite, with a `known_bug` marker). email-notification and cleanup-buckets have characterization tests with fake Kafka, S3 and SMTP clients.
 - **CI**: none.
 - **Dependency updates**: manual.
 

@@ -2,40 +2,40 @@
 
 Spec: [spec.md](spec.md)
 
-- [ ] 1. In both services, run `uv sync --extra dev` and check that `uv.lock` is unchanged. Add `tests/conftest.py` with the `known_bug` marker, and check that `pytest --markers` lists it.
-- [ ] 2. email-notification `tests/fakes.py` + conftest fixtures: `FakeConsumer` (records kwargs, iterates messages, call log), a patch for `AIOKafkaConsumer`, a patch for `send`, and an `avif_ready_payload` factory. Prove the fixtures work with one happy-path `run()` test.
-- [ ] 3. email `test_send_notification.py`:
+- [x] 1. In both services, run `uv sync --extra dev` and check that `uv.lock` is unchanged. Add `tests/conftest.py` with the `known_bug` marker, and check that `pytest --markers` lists it.
+- [x] 2. email-notification `tests/fakes.py` + conftest fixtures: `FakeConsumer` (records kwargs, iterates messages, call log), a patch for `AIOKafkaConsumer`, a patch for `send`, and an `avif_ready_payload` factory. Prove the fixtures work with one happy-path `run()` test.
+- [x] 3. email `test_send_notification.py`:
   - headers, body and the SMTP call args
   - `known_bug` N4: the hardcoded recipient
-- [ ] 4. email `test_run.py`:
+- [x] 4. email `test_run.py`:
   - consumer config and the deserializer
   - the start/commit/stop order
   - an invalid payload is skipped and the loop continues
   - `known_bug` R19: an SMTP failure is committed
   - `known_bug` R14: a tombstone or list value kills the loop; the deserializer raises on `None` or bad JSON
   - `known_bug` R15: a redelivered event sends twice
-- [ ] 5. email `test_health.py` and `test_main_config.py`:
+- [x] 5. email `test_health.py` and `test_main_config.py`:
   - `/health` returns 503/200/503
   - `known_bug` R19: healthy before `start()`
   - env defaults and overrides
   - `known_bug` R12: the `[project.scripts]` stub
-- [ ] 6. cleanup-buckets `tests/fakes.py` + conftest: `FakeConsumer`, `FakeProducer`, an S3 session stub (records the client cfg, per-key failures) and an `image_deleted_payload` factory. Prove them with one happy-path test.
-- [ ] 7. cleanup `test_handle_cleanup.py`:
+- [x] 6. cleanup-buckets `tests/fakes.py` + conftest: `FakeConsumer`, `FakeProducer`, an S3 session stub (records the client cfg, per-key failures) and an `image_deleted_payload` factory. Prove them with one happy-path test.
+- [x] 7. cleanup `test_handle_cleanup.py`:
   - bucket/key mapping for all three paths
   - `None` and empty paths are skipped
   - the S3 client is created with `s3_config`
   - `known_bug` R19: an S3 error is swallowed
   - R11 note: one client per event
-- [ ] 8. cleanup `test_run.py`:
+- [x] 8. cleanup `test_run.py`:
   - Kafka config and the serializer
   - start/commit/stop order
   - an invalid payload goes to the DLQ with the exact payload shape, then is committed
   - `known_bug` R19: a failed DLQ send still commits
   - `known_bug` R14: a tombstone or list value kills the loop
   - `known_bug` R12: `OUTPUT_TOPIC` is never produced
-- [ ] 9. cleanup `test_health.py` and `test_main_config.py`:
+- [x] 9. cleanup `test_health.py` and `test_main_config.py`:
   - `/health` matrix
   - `known_bug` R2/R11: hardcoded bootstrap, endpoint, keys and buckets
   - `known_bug` R12: the scripts stub
-- [ ] 10. Run each file on its own, then each full suite, then `pytest -m known_bug` per service. Check that every row in "Known bugs pinned" has a test.
-- [ ] 11. Update `docs/product/roadmap.md` (add R19, tick F4) and `tech-stack.md` (test note). Check the acceptance criteria (no `src/` or `uv.lock` diff).
+- [x] 10. Run each file on its own, then each full suite, then `pytest -m known_bug` per service. Check that every row in "Known bugs pinned" has a test.
+- [x] 11. Update `docs/product/roadmap.md` (add R19, tick F4) and `tech-stack.md` (test note). Check the acceptance criteria (no `src/` or `uv.lock` diff).

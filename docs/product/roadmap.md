@@ -9,7 +9,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [x] F1 [M] Characterization tests for the asset-service API: projects, presign, delete and the RustFS callback
 - [x] F2 [M] Characterization tests for the BFF: login, callback, `/me` and the proxy, including current header forwarding
 - [x] F3 [S] Characterization tests for `rs_dpop` token and DPoP validation
-- [ ] F4 [M] First tests for the email-notification and cleanup-buckets workers
+- [x] F4 [M] First tests for the email-notification and cleanup-buckets workers
 - [ ] F5 [S] Shared root `ruff.toml`, with existing findings fixed
 - [ ] F6 [M] `mypy --strict` config per service, with the current errors recorded as a baseline
 - [ ] F7 [S] Pytest config and `pytest-cov` in every service, plus a fix for the broken Vitest spec
@@ -43,6 +43,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [ ] R16 [M] Frontend auth cleanup: drop the `Bearer null` interceptor, use relative API URLs, add route guards
 - [ ] R17 [S] BFF proxy filters upstream response headers (hop-by-hop, `content-encoding`/`content-length`) instead of copying them verbatim
 - [ ] R18 [S] BFF generates a fresh DPoP key pair per session at callback instead of sharing one process-wide key
+- [ ] R19 [S] Workers stop losing failures: S3/SMTP errors and failed DLQ sends go to a DLQ or retry instead of being committed, and `/health` reflects the real consumer state
 
 ## Phase 3: New features
 
