@@ -43,7 +43,8 @@ class UpsertUserHandler(UserSyncHandler):
             # is_enabled=event.enabled,  # Added based on your event logs
         )
 
-        # 3. UPSERT logic: update values ONLY if they changed or aren't null in the event
+        # 3. UPSERT logic: update values ONLY if they changed or aren't null
+        #    in the event
         stmt = stmt.on_conflict_do_update(
             index_elements=["kc_sub"],
             set_={

@@ -67,7 +67,7 @@ def client(app_state):
 
 @pytest.fixture
 def seed_session(app_state, client):
-    """Store a session through the real SessionStore and put its sid in the cookie jar."""
+    """Store a session through the real SessionStore; put its sid in the cookie jar."""
 
     def seed(token_set=None, key_pair=None, *, set_cookie=True):
         token_set = token_set or make_token_set()

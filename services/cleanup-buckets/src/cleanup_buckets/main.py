@@ -144,7 +144,8 @@ class KafkaCleanupWorker:
 
                 for res in results:
                     if isinstance(res, Exception):
-                        # Log error but don't necessarily crash; check S3 404s specifically
+                        # Log error but don't necessarily crash;
+                        # check S3 404s specifically
                         logger.error(f"S3 deletion error for {event.image_id}: {res}")
 
             logger.info(f"Purged S3 assets for image: {event.image_id}")

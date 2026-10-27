@@ -1,4 +1,7 @@
-"""Characterization: GET /authorization-code/callback exchanges the code and opens a session."""
+"""Characterization: GET /authorization-code/callback.
+
+It exchanges the code and opens a session.
+"""
 
 import asyncio
 import logging

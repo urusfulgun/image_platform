@@ -1,8 +1,9 @@
 """Fixtures for the rs_dpop characterization tests.
 
-`validate_dpop` runs for real, mounted on a tiny app. Only the two Keycloak HTTP calls it
-makes (`public_key()` and, inside `decode_token`, `certs()`) are replaced by a test realm key,
-so python-keycloak/jwcrypto still verify the signature and `exp`.
+`validate_dpop` runs for real, mounted on a tiny app. Only the two Keycloak HTTP
+calls it makes (`public_key()` and, inside `decode_token`, `certs()`) are replaced
+by a test realm key, so python-keycloak/jwcrypto still verify the signature and
+`exp`.
 """
 
 from dataclasses import dataclass, field
@@ -53,8 +54,8 @@ class FakeKeycloak:
 def no_network(monkeypatch):
     """Fail the test if anything reaches Keycloak's real HTTP connection.
 
-    validate_dpop swallows every exception into a 401, so the attempt is also recorded and
-    asserted on teardown.
+    validate_dpop swallows every exception into a 401, so the attempt is also
+    recorded and asserted on teardown.
     """
     attempts = []
 

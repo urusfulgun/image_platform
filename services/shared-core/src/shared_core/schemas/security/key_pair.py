@@ -28,7 +28,7 @@ class ECKeyPairModel(BaseModel):
             serialization.load_pem_private_key(pem_bytes, password=None)
             return v
         except Exception as e:
-            raise ValueError(f"Invalid Private Key Data: {e!s}")
+            raise ValueError(f"Invalid Private Key Data: {e!s}") from e
 
     @field_validator("public_key_b64")
     @classmethod
@@ -38,4 +38,4 @@ class ECKeyPairModel(BaseModel):
             serialization.load_pem_public_key(pem_bytes)
             return v
         except Exception as e:
-            raise ValueError(f"Invalid Public Key Data: {e!s}")
+            raise ValueError(f"Invalid Public Key Data: {e!s}") from e

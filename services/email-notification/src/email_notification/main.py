@@ -62,7 +62,8 @@ class NotificationWorker:
     async def run(self):
         await self.consumer.start()
         logger.info(
-            f"Notification Worker live. Connected to Mailpit at {self.smtp_host}:{self.smtp_port}"
+            "Notification Worker live. Connected to Mailpit at "
+            f"{self.smtp_host}:{self.smtp_port}"
         )
 
         try:

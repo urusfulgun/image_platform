@@ -44,7 +44,10 @@ class RealmKey:
 
     @property
     def public_key_b64(self) -> str:
-        """What `KeycloakOpenID.public_key()` returns: base64 DER SubjectPublicKeyInfo."""
+        """What `KeycloakOpenID.public_key()` returns.
+
+        Base64 DER SubjectPublicKeyInfo.
+        """
         der = self.private.public_key().public_bytes(
             serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
         )

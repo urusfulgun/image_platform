@@ -16,18 +16,18 @@ async def kafka_events_consumer_lifespan(app: FastAPI):
     # STARTUP: Create the background task
     kafka_task = asyncio.create_task(consume_user_events())
     app.state.kafka_task = kafka_task
-    print("🚀 Kafka Consumer started in background")
+    log.info("🚀 Kafka Consumer started in background")
 
     yield  # The app runs while this is suspended
 
     # SHUTDOWN: Cancel the task and wait for it to finish
-    print("🛑 Shutting down Kafka Consumer...")
+    log.info("🛑 Shutting down Kafka Consumer...")
     kafka_task.cancel()
     await asyncio.gather(kafka_task, return_exceptions=True)
     try:
         await kafka_task
     except asyncio.CancelledError:
-        print("✅ Kafka Consumer task cancelled gracefully")
+        log.info("✅ Kafka Consumer task cancelled gracefully")
 
 
 @asynccontextmanager

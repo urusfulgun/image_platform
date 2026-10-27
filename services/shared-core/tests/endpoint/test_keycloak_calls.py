@@ -25,7 +25,8 @@ async def send_valid(client, dpop_key, token):
 async def test_each_request_calls_keycloak_twice_without_cache(
     client, keycloak, dpop_key, token
 ):
-    # CHARACTERIZATION: changes in R7. Two blocking HTTP calls per request, no JWKS cache.
+    # CHARACTERIZATION: changes in R7. Two blocking HTTP calls per request, no JWKS
+    # cache.
     # The `public_key()` result is only loaded and logged, never used for validation.
     for n in (1, 2):
         resp, _ = await send_valid(client, dpop_key, token)
@@ -60,7 +61,8 @@ async def test_public_key_failure_stops_before_certs(client, keycloak, dpop_key,
 async def test_success_logs_realm_key_jwk_and_proof_payload(
     client, caplog, realm, dpop_key, token
 ):
-    # CHARACTERIZATION: changes in R3. Key material and the full proof payload are logged at INFO.
+    # CHARACTERIZATION: changes in R3. Key material and the full proof payload are
+    # logged at INFO.
     caplog.set_level(logging.INFO, logger=LOGGER)
 
     resp, proof = await send_valid(client, dpop_key, token)

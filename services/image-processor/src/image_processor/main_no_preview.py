@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import io
 import json
 import logging
@@ -59,7 +60,8 @@ class KafkaImageWorker:
         await self.consumer.start()
         await self.producer.start()
         logger.info(
-            f"Processor live. Raw Bucket: {self.raw_bucket} -> Processed Bucket: {self.processed_bucket}"
+            f"Processor live. Raw Bucket: {self.raw_bucket} -> "
+            f"Processed Bucket: {self.processed_bucket}"
         )
 
         try:
@@ -184,10 +186,8 @@ async def main():
         logger.info("Shutdown signal received.")
     finally:
         worker_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await worker_task
-        except asyncio.CancelledError:
-            pass
         logger.info("Worker stopped gracefully.")
 
 

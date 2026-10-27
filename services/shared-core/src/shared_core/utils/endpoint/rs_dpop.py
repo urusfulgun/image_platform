@@ -46,7 +46,8 @@ async def validate_dpop(request: Request):
 
     if not auth or not dpop_jwt:
         log.warning(
-            f"Missing Security Headers. Expected DPoP Authorization header. Got {auth} And DPoP JWT. Got {dpop_jwt}"
+            "Missing Security Headers. Expected DPoP Authorization header. "
+            f"Got {auth} And DPoP JWT. Got {dpop_jwt}"
         )
         raise HTTPException(401, "Missing Security Headers")
     if not auth.startswith("DPoP "):
@@ -63,7 +64,9 @@ async def validate_dpop(request: Request):
         # python-keycloak handles the EC public key format automatically
         raw_key_base64 = keycloak_openid.public_key()
         log.info(f"Public Raw key {raw_key_base64}")
-        # public_key_pem = f"-----BEGIN PUBLIC KEY-----\n{raw_key}\n-----END PUBLIC KEY-----"
+        # public_key_pem = (
+        #     f"-----BEGIN PUBLIC KEY-----\n{raw_key}\n-----END PUBLIC KEY-----"
+        # )
 
         key_der = base64.b64decode(raw_key_base64.encode())
 
@@ -100,7 +103,8 @@ async def validate_dpop(request: Request):
 
         if jkt_in_token != actual_jkt:
             log.warning(
-                f"Token is not bound to this DPoP key. jkt in token {jkt_in_token} and actual jkt {actual_jkt}"
+                "Token is not bound to this DPoP key. "
+                f"jkt in token {jkt_in_token} and actual jkt {actual_jkt}"
             )
             raise HTTPException(401, "Token is not bound to this DPoP key")
 
@@ -113,25 +117,28 @@ async def validate_dpop(request: Request):
 
         if proof_payload.get("ath") != ath_calculated:
             log.warning(
-                f"DPoP proof does not match Access Token. Expected sha256: {proof_payload.get('ath')}. Got: {ath_calculated}"
+                "DPoP proof does not match Access Token. "
+                f"Expected sha256: {proof_payload.get('ath')}. Got: {ath_calculated}"
             )
             raise HTTPException(401, "DPoP 'ath' mismatch")
 
         # Check URL and Method
         if proof_payload.get("htu") != str(request.url).split("?")[0]:
             log.warning(
-                f"DPoP target URL mismatch. Expected {proof_payload.get('htu')} as statet in claims. Got {str(request.url).split('?')[0]}"
+                f"DPoP target URL mismatch. Expected {proof_payload.get('htu')} "
+                f"as statet in claims. Got {str(request.url).split('?')[0]}"
             )
             raise HTTPException(401, "DPoP target URL mismatch")
 
         if proof_payload.get("htm") != request.method:
             log.warning(
-                f"DPoP method mismatch. Expected {proof_payload.get('htm')} as statet in claims. Got {request.method!s}"
+                f"DPoP method mismatch. Expected {proof_payload.get('htm')} "
+                f"as statet in claims. Got {request.method!s}"
             )
             raise HTTPException(401, "DPoP 'htm' mismatch")
 
     except Exception as e:
         log.warning(f"Security validation failed: {e!s}")
-        raise HTTPException(401, f"DPoP Validation Failed: {e!s}")
+        raise HTTPException(401, f"DPoP Validation Failed: {e!s}") from e
 
     return decoded_token

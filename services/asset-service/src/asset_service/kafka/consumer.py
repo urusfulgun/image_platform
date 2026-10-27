@@ -44,7 +44,8 @@ async def consume_user_events():
 
                 if event.email is None and event.op != "d":
                     log.info(
-                        f"✅ Pass event {correlation_id} for user {event.sub}, because email is None in event."
+                        f"✅ Pass event {correlation_id} for user {event.sub}, "
+                        "because email is None in event."
                     )
                     continue
 

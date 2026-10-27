@@ -1,4 +1,7 @@
-"""Characterization: Authorization/DPoP header checks before the try block in validate_dpop."""
+"""Characterization: Authorization/DPoP header checks in validate_dpop.
+
+These run before its try block.
+"""
 
 import logging
 
@@ -66,8 +69,8 @@ async def test_scheme_check_is_case_sensitive(client, token, proof):
 @pytest.mark.known_bug
 @pytest.mark.asyncio
 async def test_empty_dpop_header_never_reaches_missing_proof_branch(client, token):
-    # CHARACTERIZATION: changes in R12. The later `if not dpop_jwt` branch is unreachable, so
-    # the "Missing DPoP Proof" detail is never produced.
+    # CHARACTERIZATION: changes in R12. The later `if not dpop_jwt` branch is
+    # unreachable, so the "Missing DPoP Proof" detail is never produced.
     resp = await client.get(
         "/echo", headers={"Authorization": f"DPoP {token}", "DPoP": ""}
     )
@@ -79,7 +82,8 @@ async def test_empty_dpop_header_never_reaches_missing_proof_branch(client, toke
 @pytest.mark.known_bug
 @pytest.mark.asyncio
 async def test_missing_proof_logs_access_token(client, caplog, token):
-    # CHARACTERIZATION: changes in R3. The full Authorization value is logged at WARNING.
+    # CHARACTERIZATION: changes in R3. The full Authorization value is logged at
+    # WARNING.
     caplog.set_level(logging.WARNING, logger="shared_core.utils.endpoint.rs_dpop")
 
     await client.get("/echo", headers={"Authorization": f"DPoP {token}"})
@@ -90,7 +94,8 @@ async def test_missing_proof_logs_access_token(client, caplog, token):
 @pytest.mark.known_bug
 @pytest.mark.asyncio
 async def test_wrong_scheme_logs_access_token(client, caplog, token, proof):
-    # CHARACTERIZATION: changes in R3. The full Authorization value is logged at WARNING.
+    # CHARACTERIZATION: changes in R3. The full Authorization value is logged at
+    # WARNING.
     caplog.set_level(logging.WARNING, logger="shared_core.utils.endpoint.rs_dpop")
 
     await client.get(

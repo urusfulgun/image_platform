@@ -29,7 +29,10 @@ USERINFO_CLAIMS = {
 
 
 class FakeRedis:
-    """The subset of redis.asyncio the stores use, over a dict (decode_responses=True)."""
+    """The subset of redis.asyncio the stores use, over a dict.
+
+    Behaves like decode_responses=True.
+    """
 
     def __init__(self) -> None:
         self.data: dict[str, str] = {}

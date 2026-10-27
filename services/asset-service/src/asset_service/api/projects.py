@@ -60,7 +60,7 @@ async def get_project(
     try:
         project = await project_svc.get(project_id=project_id, user_id=user.id)
     except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message)
+        raise HTTPException(status_code=404, detail=e.message) from e
     except ForbiddenError as e:
-        raise HTTPException(status_code=403, detail=e.message)
+        raise HTTPException(status_code=403, detail=e.message) from e
     return ProjectSchema.model_validate(project)

@@ -1,7 +1,8 @@
 """Characterization: access-token checks in validate_dpop (rs_dpop.py).
 
-python-keycloak's `decode_token` verifies the RS256 signature against `certs()` and checks
-`exp`/`nbf` with jwcrypto's 60 s leeway. Nothing else about the token is checked.
+python-keycloak's `decode_token` verifies the RS256 signature against `certs()`
+and checks `exp`/`nbf` with jwcrypto's 60 s leeway. Nothing else about the token is
+checked.
 """
 
 import time
@@ -36,8 +37,9 @@ async def test_valid_token_and_proof_returns_claims(client, realm, dpop_key):
 
     assert resp.status_code == 200
     claims = resp.json()
-    # CHARACTERIZATION: changes in R1. The claims (incl. `sub`) are returned, but asset-service
-    # mounts validate_dpop via `dependencies=[...]`, discards them and trusts X-User-Sub instead.
+    # CHARACTERIZATION: changes in R1. The claims (incl. `sub`) are returned, but
+    # asset-service mounts validate_dpop via `dependencies=[...]`, discards them and
+    # trusts X-User-Sub instead.
     assert claims["sub"] == SUB
     assert claims["cnf"] == {"jkt": rfc7638_thumbprint(dpop_key)}
 
@@ -148,8 +150,8 @@ async def test_token_bound_to_another_key_is_401(client, realm, dpop_key):
 @pytest.mark.known_bug
 @pytest.mark.asyncio
 async def test_binding_failure_detail_is_rewrapped(client, realm, dpop_key):
-    # CHARACTERIZATION: changes in R5. The inner HTTPException is caught by `except Exception`
-    # and its str() ("401: ...") is wrapped into a second detail.
+    # CHARACTERIZATION: changes in R5. The inner HTTPException is caught by
+    # `except Exception` and its str() ("401: ...") is wrapped into a second detail.
     token = make_access_token(realm, new_dpop_key())
 
     resp = await call(client, dpop_key, token)
@@ -162,7 +164,8 @@ async def test_binding_failure_detail_is_rewrapped(client, realm, dpop_key):
 @pytest.mark.known_bug
 @pytest.mark.asyncio
 async def test_expiry_library_text_reaches_client(client, realm, dpop_key):
-    # CHARACTERIZATION: changes in R5. jwcrypto's message, with server timestamps, is echoed.
+    # CHARACTERIZATION: changes in R5. jwcrypto's message, with server timestamps,
+    # is echoed.
     token = make_access_token(realm, dpop_key, exp=int(time.time()) - 90)
 
     resp = await call(client, dpop_key, token)

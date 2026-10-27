@@ -10,7 +10,7 @@ from bff_token_handler.auth.oauth import build_auth_url, clean_bytes, generate_p
 
 
 def test_pkce_pair_challenge_matches_verifier():
-    verifier, challenge, challenge_method = generate_pkce_pair()
+    verifier, challenge, _challenge_method = generate_pkce_pair()
 
     # Manually compute expected challenge
     digest = hashlib.sha256(verifier.encode()).digest()

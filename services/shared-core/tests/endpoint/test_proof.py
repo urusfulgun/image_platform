@@ -1,7 +1,8 @@
 """Characterization: DPoP proof checks in validate_dpop (rs_dpop.py).
 
-The proof is verified with PyJWT against the `jwk` in its own header (ES256 only), then
-`cnf.jkt`, `ath`, `htu` (request URL without query) and `htm` are compared. Nothing else is.
+The proof is verified with PyJWT against the `jwk` in its own header (ES256 only),
+then `cnf.jkt`, `ath`, `htu` (request URL without query) and `htm` are compared.
+Nothing else is.
 """
 
 import time
@@ -31,7 +32,7 @@ async def send(client, token, proof, path="/echo", method="GET"):
     return await client.request(method, path, headers=dpop_headers(token, proof))
 
 
-# --- signature and format ---------------------------------------------------------------
+# --- signature and format ----------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -80,7 +81,8 @@ async def test_proof_with_past_exp_is_401(client, dpop_key, token):
 
 @pytest.mark.asyncio
 async def test_proof_with_future_iat_is_401(client, dpop_key, token):
-    # PyJWT itself rejects an `iat` in the future (no leeway); validate_dpop adds no window.
+    # PyJWT itself rejects an `iat` in the future (no leeway); validate_dpop adds no
+    # window.
     proof = make_proof(dpop_key, "GET", URL, token, iat=int(time.time()) + 3600)
 
     resp = await send(client, token, proof)
@@ -89,7 +91,7 @@ async def test_proof_with_future_iat_is_401(client, dpop_key, token):
     assert resp.json() == {"detail": f"{PREFIX}The token is not yet valid (iat)"}
 
 
-# --- ath / htm / htu -------------------------------------------------------------------
+# --- ath / htm / htu ---------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -151,7 +153,8 @@ async def test_wrong_htu_is_401(client, dpop_key, token, htu):
 async def test_claim_mismatch_detail_is_rewrapped(
     client, dpop_key, token, proof_kwargs, detail
 ):
-    # CHARACTERIZATION: changes in R5. The inner HTTPException is re-wrapped by `except Exception`.
+    # CHARACTERIZATION: changes in R5. The inner HTTPException is re-wrapped by
+    # `except Exception`.
     htm = proof_kwargs.get("htm", "GET")
     htu = proof_kwargs.get("htu", URL)
     proof = make_proof(dpop_key, htm, htu, proof_kwargs.get("ath_token", token))
@@ -190,7 +193,7 @@ async def test_proof_library_text_reaches_client(client, dpop_key, token, make, 
     assert resp.json() == {"detail": f"{PREFIX}{detail}"}
 
 
-# --- claims that are not checked ---------------------------------------------------------
+# --- claims that are not checked ---------------------------------------------
 
 
 @pytest.mark.known_bug
@@ -245,8 +248,9 @@ async def test_proof_typ_is_not_checked(client, dpop_key, token, typ):
 @pytest.mark.known_bug
 @pytest.mark.asyncio
 async def test_htu_with_query_is_rejected(client, dpop_key, token):
-    # CHARACTERIZATION: changes in R5. The BFF puts the full upstream URL, query included, in
-    # `htu`, but validate_dpop compares against the request URL with the query stripped.
+    # CHARACTERIZATION: changes in R5. The BFF puts the full upstream URL, query
+    # included, in `htu`, but validate_dpop compares against the request URL with the
+    # query stripped.
     proof = make_proof(dpop_key, "GET", f"{URL}?page=2", token)
 
     resp = await send(client, token, proof, path="/echo?page=2")

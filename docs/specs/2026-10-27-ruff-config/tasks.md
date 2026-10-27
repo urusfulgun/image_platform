@@ -2,11 +2,11 @@
 
 Spec: [spec.md](spec.md)
 
-- [ ] 1. Record the baseline: `ruff check --statistics services`, `ruff format --check services`, and the pytest pass count per service.
-- [ ] 2. Add `/ruff.toml` as specified. Check that `--show-settings` picks it up from the root and from a service directory, and that the finding counts match the baseline in the spec.
-- [ ] 3. Run `ruff format services`. Run every suite, then commit the format-only change: `style: apply ruff format`.
-- [ ] 4. Run `ruff check --fix services` (safe fixes only). Run every suite. Commit.
-- [ ] 5. Fix by hand: E501, B904, E712 (`.is_(False)`), SIM105, RUF059, and the lifespan `print` → `log.info`. Run every suite.
+- [x] 1. Record the baseline: `ruff check --statistics services`, `ruff format --check services`, and the pytest pass count per service.
+- [x] 2. Add `/ruff.toml` as specified. Check that `--show-settings` picks it up from the root and from a service directory, and that the finding counts match the baseline in the spec.
+- [x] 3. Run `ruff format services`. Run every suite, then commit the format-only change: `style: apply ruff format`.
+- [x] 4. Run `ruff check --fix services` (safe fixes only). Run every suite. Commit.
+- [x] 5. Fix by hand: E501, B904, E712 (`.is_(False)`), SIM105, RUF059, and the lifespan `print` → `log.info`. Run every suite.
 - [ ] 6. asset-service secrets:
   - make the S3 key fields required
   - `get_s3_client` uses settings

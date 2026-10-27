@@ -13,7 +13,8 @@ from PIL import Image, ImageFile
 
 from shared_core.events.kafka_events import (
     DLQImageProcessingEventPayload,
-    ImageAvifReadyEvent,  # Note: You may need to update this schema to include preview_s3_path
+    # Note: You may need to update this schema to include preview_s3_path
+    ImageAvifReadyEvent,
     ImageRawUploadedEvent,
 )
 from shared_core.utils.s3_object_key import get_s3_object_key
@@ -84,7 +85,8 @@ class KafkaImageWorker:
         await self.consumer.start()
         await self.producer.start()
         logger.info(
-            f"Processor live. Raw Bucket: {self.raw_bucket} -> Processed Bucket: {self.processed_bucket}"
+            f"Processor live. Raw Bucket: {self.raw_bucket} -> "
+            f"Processed Bucket: {self.processed_bucket}"
         )
 
         try:

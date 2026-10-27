@@ -30,7 +30,8 @@ async def verify_rustfs_token(
     webhook_token = authorization.split(" ")[1]
     if webhook_token != RUSTFS_SECRET_TOKEN:
         log.warning(
-            f"Unauthorized callback attempt with token: {webhook_token}. Headers {headers} and Payload \n {payload};"
+            f"Unauthorized callback attempt with token: {webhook_token}. "
+            f"Headers {headers} and Payload \n {payload};"
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -73,7 +74,7 @@ async def rustfs_event_callback(
 
     except Exception as e:
         log.error(f"Rustfs callback failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal processing error")
+        raise HTTPException(status_code=500, detail="Internal processing error") from e
 
 
 async def handle_upload_event(

@@ -76,7 +76,7 @@ class SessionStore(AbstractRedisStore):
     """Async Redis session store."""
 
     def _key(self, key: str) -> str:
-        """Creates session ID key `session:session_id` for Redis to find a value with it"""
+        """Creates session ID key `session:session_id` for Redis to find a value."""
         # return redis_key_tag(t"session:{key}")
         return f"session:{key}"
 

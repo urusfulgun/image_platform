@@ -66,7 +66,7 @@ async def list_images(
     try:
         await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e)) from e
     images = await image_svc.list_for_project(project_id)
     return [get_image_schema_from_model(i) for i in images]
 
@@ -87,7 +87,7 @@ async def list_images_preview(
     try:
         await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e)) from e
     images = await image_svc.list_for_project_with_urls(project_id)
     return images
 
@@ -110,7 +110,8 @@ async def get_presigned_upload_url(
 
     Flow:
     1. Create an image_metadata row with PENDING status.
-    2. Generate a pre-signed PUT URL pointing at raw-images/<project_id>/<image_id>/<filename>.
+    2. Generate a pre-signed PUT URL pointing at
+       raw-images/<project_id>/<image_id>/<filename>.
     3. Publish an ImageRawUploadedEvent to Kafka.
     4. Return the pre-signed URL to the browser for direct upload.
     """
@@ -119,7 +120,7 @@ async def get_presigned_upload_url(
     try:
         project = await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e)) from e
 
     # Build S3 object key
     suffix = PurePosixPath(request_body.file_name).suffix.lstrip(".") or "bin"
@@ -177,7 +178,7 @@ async def delete_image(
     try:
         await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
     # 2. Perform deletion
     # Note: Depending on your ImageService implementation, you might want to
@@ -186,17 +187,17 @@ async def delete_image(
         images_to_delete = await image_svc.delete(
             image_id=image_id, project_id=project_id
         )
-    except NotFoundError:
+    except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Image {image_id} not found in project {project_id}",
-        )
+        ) from e
     except Exception as e:
         log.error(f"Failed to delete image {image_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during deletion",
-        )
+        ) from e
 
     event = ImageDeletedEvent(
         image_id=image_id,

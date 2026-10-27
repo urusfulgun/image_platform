@@ -151,7 +151,7 @@ class ImageService:
         stmt = (
             select(ImageMetadataModel)
             .where(ImageMetadataModel.project_id == project_id)
-            .where(ImageMetadataModel.deleted == False)
+            .where(ImageMetadataModel.deleted.is_(False))
             .options(selectinload(ImageMetadataModel.status))
             .order_by(ImageMetadataModel.created_at.desc())
         )
@@ -201,7 +201,7 @@ class ImageService:
         stmt = select(ImageMetadataModel).where(
             ImageMetadataModel.id == image_id,
             ImageMetadataModel.project_id == project_id,
-            ImageMetadataModel.deleted == False,
+            ImageMetadataModel.deleted.is_(False),
         )
         result = await self.db.execute(stmt)
         image = result.scalar_one_or_none()
@@ -233,7 +233,8 @@ class ImageService:
         project_id: uuid.UUID,
     ) -> ImagesToDelete:
         """
-        Confirmation of soft-deletes of the images that were triggered an asynchronous cleanup via Kafka.
+        Confirmation of soft-deletes of the images that were triggered an
+        asynchronous cleanup via Kafka.
         """
         # 1. Fetch the image
         stmt = select(ImageMetadataModel).where(

@@ -21,8 +21,10 @@ async def get_current_user_id(request: Request) -> uuid.UUID:
         raise HTTPException(status_code=401, detail="Missing user identity")
     try:
         return uuid.UUID(user_sub)
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid user identity format")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401, detail="Invalid user identity format"
+        ) from e
 
 
 async def get_local_user(
