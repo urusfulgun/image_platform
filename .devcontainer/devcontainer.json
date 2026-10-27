@@ -16,9 +16,9 @@
             "moby": "false"
         }
     },
-    "onCreateCommand": "sudo apt-get update && sudo chown -R vscode:vscode /home/vscode/.local /home/vscode/.claude && curl -LsSf https://astral.sh/uv/install.sh | sh && $HOME/.local/bin/uv self update && $HOME/.local/bin/uv python install 3.14.8 && $HOME/.local/bin/uv tool install ruff && $HOME/.local/bin/uv tool install mypy && echo 'source $HOME/.local/bin/env' >> ~/.bashrc && echo 'eval \"$(~/.local/bin/uv generate-shell-completion bash)\"' >> ~/.bashrc && mkdir -p ~/.npm-global && npm config set prefix ~/.npm-global && npm install -g @anthropic-ai/claude-code && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.bashrc",
+    "onCreateCommand": "sudo apt-get update && sudo chown -R vscode:vscode /home/vscode/.local /home/vscode/.claude && curl -LsSf https://astral.sh/uv/install.sh | sh && $HOME/.local/bin/uv self update && $HOME/.local/bin/uv python install 3.14.8 && $HOME/.local/bin/uv tool install ruff && $HOME/.local/bin/uv tool install mypy && curl -fsSL https://bun.sh/install | bash -s bun-v1.3.9 && echo 'source $HOME/.local/bin/env' >> ~/.bashrc && echo 'eval \"$(~/.local/bin/uv generate-shell-completion bash)\"' >> ~/.bashrc && mkdir -p ~/.npm-global && npm config set prefix ~/.npm-global && npm install -g @anthropic-ai/claude-code && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.bashrc",
     "remoteEnv": {
-        "PATH": "/home/vscode/.local/bin:${containerEnv:PATH}",
+        "PATH": "/home/vscode/.local/bin:/home/vscode/.bun/bin:${containerEnv:PATH}",
         "UV_PYTHON": "3.14.8",
         // Pass your host ANTHROPIC_API_KEY into the container (never hardcode it here).
         // Set the variable in your host shell before opening the devcontainer.
@@ -74,7 +74,9 @@
     ],
     // Uncomment to run as non-root (recommended for production-like setups)
     "remoteUser": "vscode",
-    // Creates .venv so the workspace is usable straight after a rebuild, then
-    // reports the toolchain.
-    "postCreateCommand": "uv sync && uv --version && uv python list && ruff --version && mypy --version && claude --version"
+    // Creates .venv and the frontend node_modules so the workspace is usable
+    // straight after a rebuild, then reports the toolchain.
+    // The Bun pin in onCreateCommand (bun-v1.3.9) must match "packageManager"
+    // in services/frontend/package.json.
+    "postCreateCommand": "uv sync && (cd services/frontend && bun install --frozen-lockfile) && uv --version && uv python list && ruff --version && mypy --version && bun --version && claude --version"
 }
