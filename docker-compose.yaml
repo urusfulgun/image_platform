@@ -298,7 +298,7 @@ services:
       - KEYCLOAK_URL=http://keycloak:8080
       - REALM=image-platform
       - CLIENT_ID=bff-client
-      - REDIRECT_URI=http://localhost:80/api/authorization-code/callback
+      - REDIRECT_URI=http://image-platform/api/authorization-code/callback
       - REDIS_URL=redis://redis-session:6379/0
       - ASSET_SERVICE_URL=http://asset-service:8000
       - SESSION_COOKIE_NAME=sid
@@ -411,7 +411,7 @@ services:
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
       - FROM_EMAIL=noreply@image-platform.local
-      - FRONTEND_BASE_URL=http://localhost
+      - FRONTEND_BASE_URL=http://image-platform
     depends_on:
       kafka:
         condition: service_healthy

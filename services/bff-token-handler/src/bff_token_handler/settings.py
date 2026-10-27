@@ -20,7 +20,7 @@ class BffSettings(BaseAppSettings):
         secrets_dir=SECRETS_DIR if SECRETS_DIR.is_dir() else None,
     )
 
-    base_url: str = "http://localhost:80"
+    base_url: str = "http://image-platform"
 
     # KeyCloak
     keycloak_url: str = "http://keycloak:8080"
@@ -30,7 +30,7 @@ class BffSettings(BaseAppSettings):
     public_client_id: str = "frontend-client"
     # Required: env CLIENT_SECRET or the secrets file /run/secrets/client_secret.
     client_secret: str
-    redirect_uri: str = "http://localhost:80/api/authorization-code/callback"
+    redirect_uri: str = "http://image-platform/api/authorization-code/callback"
 
     # Redis session store
     redis_url: str = "redis://redis-session:6379/0"

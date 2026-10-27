@@ -184,7 +184,7 @@ export class ProjectGalleryComponent implements OnInit {
   }
 
   deleteImage(imageId: string) {
-    const url = `http://localhost/api/proxy/projects/${this.projectId()}/images/${imageId}`;
+    const url = `http://image-platform/api/proxy/projects/${this.projectId()}/images/${imageId}`;
 
     // Optimistic UI update or simple request handling
     this.http.delete(url)
@@ -240,7 +240,7 @@ export class ProjectGalleryComponent implements OnInit {
   }
 
   private fetchImages() {
-    const url = `http://localhost/api/proxy/projects/${this.projectId()}/images/preview`;
+    const url = `http://image-platform/api/proxy/projects/${this.projectId()}/images/preview`;
     return this.http.get<any[]>(url);
   }
 }

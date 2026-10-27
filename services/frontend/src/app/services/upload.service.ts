@@ -23,7 +23,7 @@ export class UploadService {
         this.externalHttp = new HttpClient(handler);
     }
 
-    private BFF_API = 'http://localhost:80';
+    private BFF_API = 'http://image-platform';
 
     notifyUploadComplete() {
         this.refreshGallerySource.next();

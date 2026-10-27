@@ -11,7 +11,7 @@ export interface Project {
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
   private http = inject(HttpClient);
-  private API_URL = 'http://localhost:80/api/proxy/projects'; // BFF URL
+  private API_URL = 'http://image-platform/api/proxy/projects'; // BFF URL
 
   projects = signal<Project[]>([]);
 

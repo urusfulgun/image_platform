@@ -44,7 +44,7 @@ make status
 make clean     # docker compose down -v (wipes volumes)
 docker compose up -d --build asset-service   # rebuild a single service
 ```
-UIs: nginx `http://localhost` (80), Keycloak `:8080`, Kafka UI `:8081`, Debezium Connect `:8083`, RustFS `:9000`/console `:9001`, Mailpit `:8025`, pgAdmin `:8888`.
+UIs: nginx `http://image-platform` (80; needs `127.0.0.1 image-platform` in `/etc/hosts`), Keycloak `:8080`, Kafka UI `:8081`, Debezium Connect `:8083`, RustFS `:9000`/console `:9001`, Mailpit `:8025`, pgAdmin `:8888`.
 
 ### Python services (uv, Python ≥ 3.14.2)
 Each service is its own uv project with its own `.venv` and `uv.lock`. Run from the service directory:

@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
 
 # Define specifically allowed origins
 origins = [
-    "http://localhost:80",  # Angular Default
+    "http://image-platform",  # SPA via nginx
     "http://127.0.0.1:80",
     "http://rustfs:9000",
 ]
