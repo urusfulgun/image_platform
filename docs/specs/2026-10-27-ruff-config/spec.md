@@ -56,6 +56,6 @@ Tests: each affected service's root `tests/conftest.py` sets fake values for the
 2. `ruff check --show-settings services/asset-service/src` reports `/ruff.toml` as the settings path.
 3. Every Python service passes `uv run --extra dev pytest` with no stack and no network. The test count only changes for flipped or removed tests that this spec names.
 4. The format-only commit changes whitespace and layout only. The test suites pass before and after it, and its hash is in `.git-blame-ignore-revs`.
-5. `grep -rn "OAhzGog\|5XItB3P\|your-secure-shared-secret\|dev-bff-client-secret" services/*/src` returns nothing.
+5. `grep -rn "OAhzGog\|5XItB3P\|your-secure-shared-secret\|dev-bff-client-secret" services/asset-service/src services/bff-token-handler/src` returns nothing. The worker S3 key literals (`cleanup_buckets/main.py`, `image_processor/main.py`, `main_no_preview.py`) are still there on purpose and are left for R2/R11 (see Non-goals). (Narrowed during the build: the first version grepped `services/*/src`, which contradicted the non-goals.)
 6. Manual check on the stack: `make up`, then login works (the BFF secret comes from `/run/secrets/client_secret`), an upload reaches `OPTIMIZED` (S3 keys and webhook token), and the worker `/health` endpoints answer.
 7. `uv lock` has been run in the three workers, and `docker compose build` succeeds.

@@ -1,6 +1,6 @@
 # Tech stack
 
-Last reviewed: 2026-10-26. "Current" is verified from lock files, compose and Dockerfiles; anything not verifiable is marked *unverified*.
+Last reviewed: 2026-10-27. "Current" is verified from lock files, compose and Dockerfiles; anything not verifiable is marked *unverified*.
 
 ## Current
 
@@ -50,7 +50,7 @@ Angular 21.1.5 (core, Material/CDK 21.1.5; CLI/build 21.1.4), standalone + zonel
 
 ### Tooling
 - **DB schema**: `init-db/postgres-image-metadata/*.sql` on first init only; no migrations.
-- **Lint/format**: ruff, run ad hoc; no config file. Version *unverified* (installed as a uv tool, not locked).
+- **Lint/format**: one root `ruff.toml` (`required-version >=0.17.2`, line length 88, py314). Rules: E, W, F, I, UP, B, SIM, RUF, S, T20, ASYNC, with S101/S105/S106 ignored in tests. The tree is clean for `ruff check` and `ruff format --check`. Format commits are listed in `.git-blame-ignore-revs`. Not enforced yet (F8). ruff is installed as a uv tool, not locked.
 - **Type checking**: mypy in the editor; no config, not enforced. Version *unverified*.
 - **Tests**: pytest 9.0.2, pytest-asyncio 1.3.0, pytest-mock; no pytest config, no coverage. asset-service has API characterization tests (`tests/api/`, httpx ASGITransport against in-memory aiosqlite, with a `known_bug` marker). email-notification and cleanup-buckets have characterization tests with fake Kafka, S3 and SMTP clients.
 - **CI**: none.

@@ -26,9 +26,9 @@ Items run in order within each phase. Characterization tests come first so that 
 ## Phase 2: Refactors
 
 - [ ] R1 [M] Close the `X-User-Sub` impersonation hole: identity comes from the validated token's `sub`, and the proxy strips client identity, DPoP and `Cookie` headers
-- [ ] R2 [M] Load secrets from files or env; remove the hardcoded BFF client secret, S3 keys, webhook token and DB URL
+- [ ] R2 [M] Load secrets from files or env; remove the hardcoded BFF client secret, S3 keys, webhook token and DB URL. (F5 already moved the asset-service S3 keys, the webhook token and the BFF client secret to required settings. Still open: the DB URL, the worker S3 keys and the compose dev defaults.)
 - [ ] R3 [S] Stop logging tokens, cookies, PKCE values and full request headers
-- [ ] R4 [S] RustFS webhook auth: secret from env, constant-time compare, 403 on malformed headers
+- [ ] R4 [S] RustFS webhook auth: secret from env, constant-time compare, 403 on malformed headers. (F5: the token already comes from `RUSTFS_WEBHOOK_TOKEN`.)
 - [ ] R5 [M] Harden `rs_dpop`: check `iss`/`aud`, enforce an `iat` window, add a `jti` replay cache, check `typ`, fix the `htu` query-string mismatch, and return generic 401 details without re-wrapping
 - [ ] R6 [M] BFF refreshes the access token before proxying
 - [ ] R7 [M] Async Keycloak calls in the BFF and a cached JWKS in `rs_dpop`
@@ -36,7 +36,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [ ] R9 [M] Switch asset-service to aioboto3, with one shared client from the S3 lifespan
 - [ ] R10 [M] Alembic migrations replace `init-db` SQL
 - [ ] R11 [S] Workers read topics and S3 credentials from env instead of hardcoded values
-- [ ] R12 [S] Remove dead code and scratch files (`register-connectors copy*.sh`, unused Dockerfiles, `main_no_preview.py`, dead frontend files)
+- [ ] R12 [S] Remove dead code and scratch files (`register-connectors copy*.sh`, unused Dockerfiles, `main_no_preview.py`, dead frontend files). (F5 removed the workers' hello-world `main()` stubs and `[project.scripts]`.)
 - [ ] R13 [S] A DLQ consumer marks failed images `FAILED` instead of leaving them `PENDING`
 - [ ] R14 [S] Poison messages and Debezium tombstones no longer kill consumers
 - [ ] R15 [M] Idempotent image processing with deterministic output keys (no orphans or duplicate emails on redelivery)
