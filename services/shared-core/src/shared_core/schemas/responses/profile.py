@@ -6,6 +6,7 @@ class UserProfileResponse(BaseModel):
     Sanitized user information for the User Agent (Browser).
     Excludes sensitive/internal claims like 'sub', 'iss', and 'aud'.
     """
+
     name: str = Field(..., examples=["John Doe"])
     given_name: str = Field(..., alias="given_name")
     family_name: str = Field(..., alias="family_name")

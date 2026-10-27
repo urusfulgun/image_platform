@@ -1,4 +1,5 @@
 """Tests for PKCE helpers."""
+
 import base64
 import hashlib
 
@@ -19,8 +20,10 @@ def test_pkce_pair_challenge_matches_verifier():
 
 def test_pkce_verifier_is_url_safe():
     verifier, _, _ = generate_pkce_pair()
-    assert all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-               for c in verifier)
+    assert all(
+        c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        for c in verifier
+    )
 
 
 def test_build_auth_url_contains_required_params(mocker):
@@ -65,8 +68,13 @@ def test_clean_bytes_decodes_nested_bytes():
 
 
 def test_clean_bytes_passes_through_json_scalars():
-    data = {"email": "j@example.com", "email_verified": True, "exp": 1700000000,
-            "score": 0.5, "nickname": None}
+    data = {
+        "email": "j@example.com",
+        "email_verified": True,
+        "exp": 1700000000,
+        "score": 0.5,
+        "nickname": None,
+    }
     assert clean_bytes(data) == data
 
 

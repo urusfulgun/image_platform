@@ -3,6 +3,7 @@
 Forwards authenticated requests to the AssetService, injecting a fresh
 DPoP proof and the access token retrieved from the session store.
 """
+
 import logging
 from typing import Optional
 
@@ -35,13 +36,19 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
     # --- Resolve session ---
     session_id: Optional[str] = request.cookies.get(settings.session_cookie_name)
     if not session_id:
-        return Response(content='{"detail":"Not authenticated"}', status_code=401,
-                        media_type="application/json")
+        return Response(
+            content='{"detail":"Not authenticated"}',
+            status_code=401,
+            media_type="application/json",
+        )
 
     token_set, key_pair = await session_store.get(session_id)
     if not token_set:
-        return Response(content='{"detail":"Session expired"}', status_code=401,
-                        media_type="application/json")
+        return Response(
+            content='{"detail":"Session expired"}',
+            status_code=401,
+            media_type="application/json",
+        )
 
     # --- Build downstream URL ---
     upstream_url = f"{settings.asset_service_url}/{downstream_path.lstrip('/')}"
@@ -50,19 +57,27 @@ async def proxy_request(request: Request, downstream_path: str) -> Response:
 
     # --- Fresh DPoP proof for the upstream call ---
     ath_claim = generate_dpop_ath(token_set.access_token)
-    dpop_proof = create_dpop_proof(request.method, upstream_url, key_pair, ath=ath_claim)
+    dpop_proof = create_dpop_proof(
+        request.method, upstream_url, key_pair, ath=ath_claim
+    )
 
     # --- Forward headers (strip hop-by-hop) ---
-    HOP_BY_HOP = {"host", "connection", "transfer-encoding", "upgrade", "authorization",
-                  "proxy-connection", "keep-alive"}
+    HOP_BY_HOP = {
+        "host",
+        "connection",
+        "transfer-encoding",
+        "upgrade",
+        "authorization",
+        "proxy-connection",
+        "keep-alive",
+    }
     forward_headers = {
-        k: v for k, v in request.headers.items()
-        if k.lower() not in HOP_BY_HOP
+        k: v for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP
     }
     _, info_claims, _ = decode_jwt_token(token_set.id_token)
     forward_headers["Authorization"] = f"DPoP {token_set.access_token}"
     forward_headers["DPoP"] = dpop_proof
-    forward_headers["X-User-Sub"] = info_claims['sub']
+    forward_headers["X-User-Sub"] = info_claims["sub"]
 
     # --- Stream body ---
     body = await request.body()

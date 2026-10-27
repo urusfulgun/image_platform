@@ -1,4 +1,5 @@
 """Tests for Kafka event schemas."""
+
 import uuid
 from datetime import datetime, timezone
 

@@ -125,7 +125,7 @@ async def get_presigned_upload_url(
 
     # Build S3 object key
     suffix = PurePosixPath(request_body.file_name).suffix.lstrip(".") or "bin"
-    s3_key = get_s3_object_key(project_id, f'normal.{suffix}')
+    s3_key = get_s3_object_key(project_id, f"normal.{suffix}")
 
     log.info(f"Project UUID {project.id}")
 
@@ -171,8 +171,8 @@ async def delete_image(
 ):
     """
     Delete an image from a project.
-    
-    This verifies that the project belongs to the user and that 
+
+    This verifies that the project belongs to the user and that
     the image belongs to the specified project before deletion.
     """
     # 1. Verify project ownership/access
@@ -182,30 +182,32 @@ async def delete_image(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
     # 2. Perform deletion
-    # Note: Depending on your ImageService implementation, you might want to 
+    # Note: Depending on your ImageService implementation, you might want to
     # check if the image exists and belongs to project_id first.
     try:
-        images_to_delete = await image_svc.delete(image_id=image_id, project_id=project_id)
+        images_to_delete = await image_svc.delete(
+            image_id=image_id, project_id=project_id
+        )
     except NotFoundError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"Image {image_id} not found in project {project_id}"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image {image_id} not found in project {project_id}",
         )
     except Exception as e:
         log.error(f"Failed to delete image {image_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="Internal server error during deletion"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during deletion",
         )
-    
+
     event = ImageDeletedEvent(
         image_id=image_id,
         project_id=project_id,
         raw_s3_path=images_to_delete.raw_s3_path,
         processed_s3_path=images_to_delete.processed_s3_path,
-        preview_s3_path=images_to_delete.preview_s3_path
+        preview_s3_path=images_to_delete.preview_s3_path,
     )
-    
+
     # If the DB commit succeeds but Kafka fails, the image is "hidden" from the user,
     # but S3 isn't cleaned up. You might want a periodic reconciliation job for this.
     await kafka_producer.publish_image_deleted_topic(event)

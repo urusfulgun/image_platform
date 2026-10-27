@@ -1,4 +1,5 @@
 """Tests for shadow user sync from Keycloak CDC events."""
+
 import uuid
 import pytest
 from sqlalchemy.dialects.postgresql import Insert
@@ -8,7 +9,9 @@ from shared_core.schemas.debezium.events import KeycloakUserEvent
 from asset_service.kafka.user_sync_handler import UserEventOrchestrator
 
 
-def make_event(op: str, email: str | None = "alice@example.com", **extra) -> KeycloakUserEvent:
+def make_event(
+    op: str, email: str | None = "alice@example.com", **extra
+) -> KeycloakUserEvent:
     return KeycloakUserEvent.model_validate(
         {"id": str(uuid.uuid4()), "email": email, "__op": op, **extra}
     )

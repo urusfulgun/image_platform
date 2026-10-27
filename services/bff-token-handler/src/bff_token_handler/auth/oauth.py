@@ -167,9 +167,7 @@ def clean_bytes(data: object) -> JsonValue:
     elif data is None or isinstance(data, (str, int, float, bool)):
         return data
     else:
-        raise TypeError(
-            f"Expected bytes or a JSON-compatible value. Got {type(data)}"
-        )
+        raise TypeError(f"Expected bytes or a JSON-compatible value. Got {type(data)}")
 
 
 async def introspect_token(

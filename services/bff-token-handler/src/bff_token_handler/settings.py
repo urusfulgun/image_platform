@@ -1,4 +1,5 @@
 """BFF Token Handler settings."""
+
 from pydantic import Field
 from shared_core.schemas.security.config import KeyCloakOpenIDConfig
 from shared_core.settings import BaseAppSettings
@@ -26,7 +27,7 @@ class BffSettings(BaseAppSettings):
 
     # Upstream AssetService
     asset_service_url: str = "http://asset-service:8000"
-    pkce_code_challenge_method: str = 'S256'
+    pkce_code_challenge_method: str = "S256"
 
     # App
     debug: bool = True
@@ -42,20 +43,24 @@ class BffSettings(BaseAppSettings):
 
     @property
     def oidc_well_known_url(self) -> str:
-        return f"{self.keycloak_url}/realms/{self.realm}/.well-known/openid-configuration"
-    
+        return (
+            f"{self.keycloak_url}/realms/{self.realm}/.well-known/openid-configuration"
+        )
+
     @property
     def token_url(self) -> str:
         return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/token"
-    
+
     @property
     def userinfo_url(self) -> str:
-        return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/userinfo"
+        return (
+            f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/userinfo"
+        )
 
     @property
     def logout_url(self) -> str:
         return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/logout"
-    
+
     @property
     def keycloak_revocation_url(self) -> str:
         return f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/revoke"
@@ -64,8 +69,8 @@ class BffSettings(BaseAppSettings):
 settings = BffSettings()
 
 keycloak_config = KeyCloakOpenIDConfig(
-        server_url=settings.keycloak_url,
-        client_id=settings.client_id,
-        realm_name=settings.realm,
-        client_secret_key=settings.client_secret,
-    )
+    server_url=settings.keycloak_url,
+    client_id=settings.client_id,
+    realm_name=settings.realm,
+    client_secret_key=settings.client_secret,
+)

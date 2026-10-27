@@ -142,7 +142,11 @@ def decode_jwt_token(token: str) -> tuple[dict, dict, bytes]:
         raise ValueError("Invalid token format. Expected 3 parts.")
     h_b64, p_b64, s_b64 = parts
 
-    return _decode_json_segment(h_b64), _decode_json_segment(p_b64), _b64url_decode(s_b64)
+    return (
+        _decode_json_segment(h_b64),
+        _decode_json_segment(p_b64),
+        _b64url_decode(s_b64),
+    )
 
 
 def create_dpop_proof(

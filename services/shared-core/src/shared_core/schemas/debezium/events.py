@@ -11,10 +11,12 @@ class KeycloakUserEvent(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     enabled: bool = True
-    
+
     # Metadata added by the Debezium 'unwrap' transform
-    op: str = Field(..., alias="__op") # 'c'=create, 'u'=update, 'd'=delete
-    deleted: bool = Field(False, alias="__deleted")  # "true"/"false" string from rewrite mode
+    op: str = Field(..., alias="__op")  # 'c'=create, 'u'=update, 'd'=delete
+    deleted: bool = Field(
+        False, alias="__deleted"
+    )  # "true"/"false" string from rewrite mode
 
     class Config:
         populate_by_name = True

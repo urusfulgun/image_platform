@@ -1,4 +1,5 @@
 """Tests for DPoP proof generation."""
+
 import base64
 import json
 

@@ -1,4 +1,5 @@
 """AssetService settings."""
+
 from pydantic import Field
 from shared_core.settings import BaseAppSettings
 

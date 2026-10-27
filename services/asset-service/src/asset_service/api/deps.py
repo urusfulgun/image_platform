@@ -1,4 +1,5 @@
 """FastAPI dependency injection helpers."""
+
 import uuid
 from typing import Annotated, Optional
 
@@ -30,9 +31,7 @@ async def get_local_user(
     db: AsyncSession = Depends(get_db),
 ) -> UserModel:
     """Resolve the shadow user from the local DB by KeyCloak sub."""
-    result = await db.execute(
-        select(UserModel).where(UserModel.kc_sub == kc_sub)
-    )
+    result = await db.execute(select(UserModel).where(UserModel.kc_sub == kc_sub))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not synced yet")

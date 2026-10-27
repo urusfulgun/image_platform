@@ -40,7 +40,7 @@ def get_jkt(jwk_dict):
 
 
 async def validate_dpop(request: Request):
-    log.info('DPoP validation')
+    log.info("DPoP validation")
     auth = request.headers.get("Authorization")
     dpop_jwt = request.headers.get("DPoP")
 
@@ -69,7 +69,7 @@ async def validate_dpop(request: Request):
 
         # Load the key to check its type (Fixes your "Invalid Key type" error)
         key_obj = serialization.load_der_public_key(key_der)
-        
+
         # Determine algorithm based on the actual key type returned by Keycloak
         # If Keycloak returns RSA, use RS256. If EC, use ES256.
         # token_alg = "RS256" if "RSA" in str(type(key_obj)) else "ES256"

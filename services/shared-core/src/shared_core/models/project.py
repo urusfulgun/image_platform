@@ -1,4 +1,5 @@
 """Project Pydantic schemas."""
+
 import uuid
 from datetime import datetime
 from enum import StrEnum

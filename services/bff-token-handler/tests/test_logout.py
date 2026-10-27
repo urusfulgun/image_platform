@@ -1,4 +1,5 @@
 """Tests for the /logout route."""
+
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlsplit
 
@@ -74,7 +75,9 @@ def test_logout_with_expired_session_clears_cookie(client, session_store, revoke
     revoke.assert_not_awaited()
 
 
-def test_logout_revokes_and_deletes_session(client, session_store, revoke, user_session):
+def test_logout_revokes_and_deletes_session(
+    client, session_store, revoke, user_session
+):
     session_store.get.return_value = user_session
     client.cookies.set(settings.session_cookie_name, SESSION_ID)
 

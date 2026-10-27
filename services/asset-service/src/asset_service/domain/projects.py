@@ -1,4 +1,5 @@
 """Project domain services."""
+
 import uuid
 from typing import Optional
 from sqlalchemy import select
@@ -14,7 +15,9 @@ class ProjectService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def create(self, user_id: uuid.UUID, req: CreateProjectRequest) -> ProjectModel:
+    async def create(
+        self, user_id: uuid.UUID, req: CreateProjectRequest
+    ) -> ProjectModel:
         project = ProjectModel(user_id=user_id, name=req.name)
         self.db.add(project)
         await self.db.commit()

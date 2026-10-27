@@ -1,4 +1,5 @@
 """Tests for shared-core Pydantic models."""
+
 import uuid
 from datetime import datetime, timezone
 import pytest

@@ -93,9 +93,11 @@ app.add_middleware(
     # expose_headers=["DPoP"],  # If you need Angular to read DPoP headers
 )
 
+
 @app.get("/health", tags=["ops"])
 async def health():
     return JSONResponse({"status": "ok"})
+
 
 # ---------------------------------------------------------------------------
 # Auth routes
@@ -235,7 +237,10 @@ async def me(request: Request):
     try:
         user_info_token = await introspect_token(key_pair, token_set.access_token)
     except KeycloakAuthenticationError as e:
-        return JSONResponse({"detail": f"Not authenticated extra: {e.error_message}"}, status_code=e.response_code)
+        return JSONResponse(
+            {"detail": f"Not authenticated extra: {e.error_message}"},
+            status_code=e.response_code,
+        )
     # Userinfo is plain JSON unless the client has signed userinfo responses enabled
     if isinstance(user_info_token, dict):
         claims = user_info_token

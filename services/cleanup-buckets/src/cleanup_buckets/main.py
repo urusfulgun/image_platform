@@ -29,15 +29,15 @@ async def health_check():
     """
     if not worker_instance:
         return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
-    
+
     # Check if Kafka components are running
     # Note: _closed is an internal state, but useful for basic liveness
     is_consumer_ok = worker_instance.consumer is not None
     is_producer_ok = worker_instance.producer is not None
-    
+
     if is_consumer_ok and is_producer_ok:
         return {"status": "healthy", "worker": "active"}
-    
+
     return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
@@ -181,7 +181,7 @@ async def main():
         async with asyncio.TaskGroup() as tg:
             w_task = tg.create_task(worker_instance.run())
             _ = tg.create_task(server.serve())
-            
+
             # Wait until a shutdown signal is received
             await stop_event.wait()
             logger.info("Shutdown signal received.")
@@ -189,8 +189,8 @@ async def main():
             server.should_exit = True
             logger.info("Initiating graceful shutdown...")
             w_task.cancel()
-            
-            # When we exit this block, all remaining tasks (worker/server) 
+
+            # When we exit this block, all remaining tasks (worker/server)
             # are automatically cancelled and awaited.
     except* asyncio.CancelledError:
         # This is expected when we cancel w_task

@@ -1,4 +1,5 @@
 """Image Pydantic schemas."""
+
 import uuid
 from datetime import datetime
 from enum import StrEnum
@@ -43,7 +44,6 @@ class ImageSchemaPreview(BaseModel):
     raw_image_url: str | None
     processed_image_url: str | None
     processed_format: str | None
-
 
     model_config = {"from_attributes": True}
 

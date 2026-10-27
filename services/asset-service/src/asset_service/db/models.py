@@ -95,9 +95,7 @@ class ImageMetadataModel(Base):
         default=lambda: datetime.now(timezone.utc),
     )
     deleted_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
-        default=None,
-        nullable=True
+        TIMESTAMP(timezone=True), default=None, nullable=True
     )
     deleted: Mapped[bool] = mapped_column(default=False)
 

@@ -1,4 +1,5 @@
 """Pytest configuration for shared-core tests."""
+
 import pytest
 
 
@@ -13,4 +14,5 @@ def pytest_configure(config):
 @pytest.fixture
 def sample_uuid():
     import uuid
+
     return uuid.uuid4()
