@@ -5,10 +5,10 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from helpers import user_headers
 
 from asset_service.db.models import ImageMetadataModel
 from shared_core.events.kafka_events import ImageRawUploadedEvent
+from tests.api.helpers import user_headers
 
 
 def presign_url(project_id) -> str:

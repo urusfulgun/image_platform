@@ -9,7 +9,8 @@ import time
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
-from helpers import (
+
+from tests.endpoint.helpers import (
     BASE_URL,
     SUB,
     dpop_headers,

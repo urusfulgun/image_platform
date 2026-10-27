@@ -4,11 +4,11 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from helpers import user_headers
 
 from asset_service.db.models import ImageMetadataModel
 from asset_service.domain.images import ImageService
 from shared_core.events.kafka_events import ImageDeletedEvent
+from tests.api.helpers import user_headers
 
 
 def delete_url(project_id, image_id) -> str:

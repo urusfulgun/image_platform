@@ -4,9 +4,9 @@ import logging
 
 import httpx
 import pytest
-from helpers import make_token_set
 
 from bff_token_handler.settings import settings
+from tests.api.helpers import make_token_set
 
 METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 

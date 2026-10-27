@@ -4,7 +4,8 @@ import logging
 
 import jwt
 import pytest
-from helpers import BASE_URL, dpop_headers, make_access_token, make_proof
+
+from tests.endpoint.helpers import BASE_URL, dpop_headers, make_access_token, make_proof
 
 URL = f"{BASE_URL}/echo"
 LOGGER = "shared_core.utils.endpoint.rs_dpop"

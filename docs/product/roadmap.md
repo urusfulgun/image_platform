@@ -11,7 +11,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [x] F3 [S] Characterization tests for `rs_dpop` token and DPoP validation
 - [x] F4 [M] First tests for the email-notification and cleanup-buckets workers
 - [x] F5 [S] Shared root `ruff.toml`, with existing findings fixed
-- [ ] F6 [M] `mypy --strict` config per service, with the current errors recorded as a baseline
+- [x] F6 [M] `mypy --strict` config per service, with the current errors recorded as a baseline
 - [ ] F7 [S] Pytest config and `pytest-cov` in every service, plus a fix for the broken Vitest spec. (The Vitest spec `app.spec.ts` is already fixed and passing. Still open: the pytest config and `pytest-cov`.)
 - [ ] F8 [M] GitHub Actions CI: Python matrix (ruff, mypy, pytest) plus frontend build, Vitest and Playwright
 - [ ] F9 [S] Pin every image tag, including `uv`, and fix the misnamed `.dockerignore` files
@@ -38,7 +38,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [ ] R9 [M] Switch asset-service to aioboto3, with one shared client from the S3 lifespan
 - [ ] R10 [M] Alembic migrations replace `init-db` SQL
 - [ ] R11 [S] Workers read topics and S3 credentials from env instead of hardcoded values
-- [ ] R12 [S] Remove dead code and scratch files (`register-connectors copy*.sh`, unused Dockerfiles, `main_no_preview.py`, dead frontend files). (F5 removed the workers' hello-world `main()` stubs and `[project.scripts]`.)
+- [ ] R12 [S] Remove dead code and scratch files (`register-connectors copy*.sh`, unused Dockerfiles, `main_no_preview.py`, dead frontend files). (F5 removed the workers' hello-world `main()` stubs and `[project.scripts]`. F6's mypy baseline also flags the unused `redis_key_tag` in the BFF, which reads a `Template.args` that doesn't exist.)
 - [ ] R13 [S] A DLQ consumer marks failed images `FAILED` instead of leaving them `PENDING`
 - [ ] R14 [S] Poison messages and Debezium tombstones no longer kill consumers
 - [ ] R15 [M] Idempotent image processing with deterministic output keys (no orphans or duplicate emails on redelivery)

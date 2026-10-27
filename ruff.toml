@@ -12,6 +12,8 @@ select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF", "S", "T20", "ASYNC"]
 [lint.per-file-ignores]
 # Tests use plain asserts and fake secrets.
 "services/*/tests/**" = ["S101", "S105", "S106"]
+# Command-line scripts report on stdout.
+"scripts/**" = ["T201"]
 
 [lint.flake8-bugbear]
 # FastAPI dependency markers in argument defaults are the intended idiom.

@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from helpers import AUTH_ENDPOINT, USERINFO_CLAIMS, FakeRedis, make_token_set
 from keycloak import KeycloakOpenID
 
 from bff_token_handler import main
@@ -19,6 +18,7 @@ from bff_token_handler.auth.dpop import generate_ec_key_pair
 from bff_token_handler.proxy import reverse_proxy
 from bff_token_handler.session.redis_store import CodeVerifierStore, SessionStore
 from bff_token_handler.settings import settings
+from tests.api.helpers import AUTH_ENDPOINT, USERINFO_CLAIMS, FakeRedis, make_token_set
 
 _MISSING = object()
 

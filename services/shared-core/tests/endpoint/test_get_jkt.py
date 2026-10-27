@@ -1,9 +1,9 @@
 """Characterization: get_jkt, the RFC 7638 thumbprint used for `cnf.jkt` binding."""
 
 import pytest
-from helpers import new_dpop_key, public_jwk, rfc7638_thumbprint
 
 from shared_core.utils.endpoint.rs_dpop import get_jkt
+from tests.endpoint.helpers import new_dpop_key, public_jwk, rfc7638_thumbprint
 
 
 def test_matches_rfc7638_thumbprint():

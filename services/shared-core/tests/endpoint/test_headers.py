@@ -6,7 +6,8 @@ These run before its try block.
 import logging
 
 import pytest
-from helpers import BASE_URL, make_access_token, make_proof
+
+from tests.endpoint.helpers import BASE_URL, make_access_token, make_proof
 
 
 @pytest.fixture

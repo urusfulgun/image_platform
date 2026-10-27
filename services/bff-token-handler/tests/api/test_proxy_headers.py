@@ -6,10 +6,10 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, utils
-from helpers import SUB, b64url_decode, decode_proof
 
 from bff_token_handler.auth.dpop import COORD_LEN, generate_dpop_ath, get_public_jwk
 from bff_token_handler.settings import settings
+from tests.api.helpers import SUB, b64url_decode, decode_proof
 
 UPSTREAM_URL = "http://asset-service:8000/projects/p1/images/?limit=5"
 

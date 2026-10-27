@@ -4,9 +4,8 @@ import base64
 import hashlib
 from urllib.parse import parse_qs, urlsplit
 
-from helpers import AUTH_ENDPOINT
-
 from bff_token_handler.settings import settings
+from tests.api.helpers import AUTH_ENDPOINT
 
 
 def _redirect_params(resp) -> tuple[str, dict[str, str]]:

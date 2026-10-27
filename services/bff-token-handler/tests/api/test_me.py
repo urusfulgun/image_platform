@@ -4,11 +4,11 @@ import logging
 from unittest.mock import AsyncMock
 
 import pytest
-from helpers import PROFILE_CLAIMS, USERINFO_CLAIMS, make_id_token
 from keycloak import KeycloakAuthenticationError
 
 from bff_token_handler.auth import oauth
 from bff_token_handler.settings import settings
+from tests.api.helpers import PROFILE_CLAIMS, USERINFO_CLAIMS, make_id_token
 
 
 def test_me_without_cookie_is_401(client, introspect_token):

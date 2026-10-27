@@ -13,9 +13,9 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import Depends, FastAPI
-from helpers import BASE_URL, RealmKey, new_dpop_key, new_realm_key
 
 from shared_core.utils.endpoint import rs_dpop
+from tests.endpoint.helpers import BASE_URL, RealmKey, new_dpop_key, new_realm_key
 
 Claims = Annotated[dict, Depends(rs_dpop.validate_dpop)]
 

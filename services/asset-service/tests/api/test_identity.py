@@ -3,10 +3,10 @@
 import uuid
 
 import pytest
-from helpers import user_headers
 
 from asset_service.main import app
 from shared_core.utils.endpoint.rs_dpop import validate_dpop
+from tests.api.helpers import user_headers
 
 
 @pytest.mark.asyncio

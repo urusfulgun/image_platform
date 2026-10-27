@@ -10,7 +10,8 @@ import time
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
-from helpers import (
+
+from tests.endpoint.helpers import (
     BASE_URL,
     dpop_headers,
     make_access_token,

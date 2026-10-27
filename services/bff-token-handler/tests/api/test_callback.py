@@ -7,10 +7,10 @@ import asyncio
 import logging
 
 import pytest
-from helpers import make_token_set
 from keycloak import KeycloakPostError
 
 from bff_token_handler.settings import settings
+from tests.api.helpers import make_token_set
 
 CALLBACK = "/authorization-code/callback"
 STATE = "known-state"

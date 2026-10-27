@@ -22,9 +22,10 @@ Most `import-untyped` errors happen because shared-core ships no `py.typed`. The
   - `strict = true`, `python_version = "3.14"`, `warn_unused_configs = true`
   - `files = ["src", "tests"]`
   - `plugins = ["pydantic.mypy"]`, so required `BaseSettings` fields are typed correctly
-  - `explicit_package_bases = true` with a `mypy_path` that holds `src` and each test directory that has a `helpers.py`/`fakes.py` (`tests/api`, `tests/endpoint`). This lets `from helpers import …` resolve and stops the duplicate `conftest` error. If one config cannot do both, decide during the build and record the outcome here. Test files must not move.
-- `[[tool.mypy.overrides]]` for `aiokafka`, `aiokafka.*`: `ignore_missing_imports = true`. It ships no types and has no stubs package.
-- `[[tool.mypy.overrides]]` for the test modules (`tests.*`, `conftest`, `helpers`, `fakes`):
+  - `explicit_package_bases = true`, `mypy_path = ["src"]`
+  - Decided during the build: putting `tests/api` on `mypy_path` made `from helpers import …` resolve, but it turned those files into top-level modules (`test_health`, `helpers`). mypy override patterns accept only exact names or a `pkg.*` suffix, so the relaxed `tests.*` override couldn't reach them. Instead, `tests/` and `tests/api` (asset-service, bff-token-handler) or `tests/endpoint` (shared-core) became packages with an `__init__.py`. Their imports changed to `from tests.api.helpers import …` / `from tests.endpoint.helpers import …`, the style that email-notification and cleanup-buckets already use. No test files moved.
+- `[[tool.mypy.overrides]]` for `aiokafka`: `ignore_missing_imports = true`. It ships no types and has no stubs package. It's only in the four services that import it, because `warn_unused_configs` flags unused sections.
+- `[[tool.mypy.overrides]]` for `tests.*`:
   - set `disallow_untyped_defs`, `disallow_incomplete_defs`, `disallow_untyped_calls` and `disallow_untyped_decorators` to `false`
   - keep `check_untyped_defs = true`
 - No root `mypy.ini`. The config is per service, as the roadmap says, because each service has its own venv.
@@ -41,6 +42,22 @@ Most `import-untyped` errors happen because shared-core ships no `py.typed`. The
   - `--update` rewrites the baseline.
   - It exits 2 if mypy crashes or stops early (for example a duplicate-module error), so an empty result can't pass by accident.
 - `make typecheck` runs the check in every service and exits non-zero if any of them fails.
+
+Baseline counts at the end of F6, covering `src` and `tests` after `py.typed` and the aiokafka override:
+
+| Service | Entries | Main codes |
+|---|---|---|
+| shared-core | 15 | type-arg 6, no-untyped-def 4, arg-type 4 |
+| asset-service | 76 | no-untyped-def 34, arg-type 12, no-any-return 8 |
+| bff-token-handler | 37 | type-arg 10, no-untyped-def 9, arg-type 7 |
+| image-processor | 24 | no-untyped-def 9, type-arg 5, no-untyped-call 4 |
+| email-notification | 7 | no-untyped-def 4 |
+| cleanup-buckets | 11 | no-untyped-def 5 |
+| **Total** | **170** | |
+
+A read-through of the baselines found no config mistakes. Two entries are real bugs that were left for later items:
+- `bff_token_handler/session/redis_store.py`: `redis_key_tag` reads `Template.args`, which doesn't exist in Python 3.14's `string.templatelib` (it was in a PEP 750 draft). Only commented-out code calls it, so it is dead code (R12).
+- `image_processor/main_no_preview.py` builds `ImageAvifReadyEvent` without the required `preview_s3_path` and `processed_format` (dead code, R12).
 
 ## Non-goals
 - Fixing type errors other than `py.typed` (later items shrink the baseline)
