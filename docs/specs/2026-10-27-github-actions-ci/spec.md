@@ -22,19 +22,28 @@ Each PR and each push to `main` runs the checks that F5–F7 made available as c
   3. `uv run --extra dev python ../../scripts/mypy_check.py`
   4. `uv run --extra dev pytest --cov`
   - Python comes from `.python-version` (3.14.2), the version the Dockerfiles use, and uv installs it. The devcontainer's 3.14.8 is not copied in. Aligning the versions is F12.
-- **Job `frontend`** (`working-directory: services/frontend`): checkout, setup-bun, `bun install --frozen-lockfile`, `bun run build`, `bun run test -- --watch=false`.
+- **Job `frontend`** (`working-directory: services/frontend`): checkout, setup-bun, `bun install --frozen-lockfile`, `bun run build`, `bun run test --watch=false`. (Decided during the build: `bun run` passes trailing flags to the script without a `--` separator, so the spec's `-- --watch=false` became `--watch=false`.)
 - **Job `e2e`** (`working-directory: services/frontend`): checkout, setup-bun, `bun install --frozen-lockfile`, `bunx playwright install --with-deps chromium firefox`, `bun run e2e`. GitHub sets `CI=true`, so the existing CI branch of `playwright.config.ts` applies without changes. If the job fails, `playwright-report/` and `test-results/` are uploaded as an artifact with 7-day retention. It is a separate job so that a slow browser install doesn't hold up the build/Vitest result.
 - Jobs run in parallel with no `needs:`.
+- Added during the build: `persist-credentials: false` on every checkout, so the `GITHUB_TOKEN` isn't left in `.git/config` for later steps. Runners are pinned to `ubuntu-24.04` rather than `ubuntu-latest`. The `ruff` job sets `enable-cache: false` because the root has no `uv.lock` to key a cache on.
+
+## Local run (2026-10-27)
+- `actionlint` 1.7.12 (`uvx --from actionlint-py actionlint`): no findings.
+- `ruff check .` and `ruff format --check .` from the root: clean.
+- Python legs, run as in CI: `UV_PYTHON` unset so `.python-version` applies (3.14.2), with `uv sync --locked --extra dev` into a scratch venv per service. Every lock is current, every mypy baseline matches on 3.14.2 (the same 170 entries as on the devcontainer's 3.14.8), and every suite passes at or above its floor.
+- Frontend: `bun install --frozen-lockfile`, `bun run build`, `bun run test --watch=false` (4 tests) and `CI=true bun run e2e` (14 tests, Chromium and Firefox) all pass.
 
 ## Action pins
-Filled in during the build (task 1):
+Latest release of each action on 2026-10-27, resolved to its commit with `git ls-remote` (peeled for annotated tags):
 
 | Action | Version | SHA |
 |---|---|---|
-| `actions/checkout` | | |
-| `astral-sh/setup-uv` | | |
-| `oven-sh/setup-bun` | | |
-| `actions/upload-artifact` | | |
+| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
+| `astral-sh/setup-uv` | v10.3.2 | `07a047e608db84b3d8c06cd9a7c7dcc9c355c18e` |
+| `oven-sh/setup-bun` | v2.2.0 | `0c5077e51419868618aeaa5fe8019c62421857d6` |
+| `actions/upload-artifact` | v7.0.2 | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` |
+
+All four run on `node24`. The inputs the workflow uses (`version`, `enable-cache`, `cache-dependency-glob`, `bun-version-file`, `retention-days`, `if-no-files-found`) were checked against each pinned `action.yml`.
 
 ## Non-goals
 - pip-audit, Trivy, CodeQL or other scanning (F11). Dependabot or Renovate for actions, locks and images (F10).
@@ -53,7 +62,7 @@ Filled in during the build (task 1):
 1. `.github/workflows/ci.yml` exists with the triggers, `permissions: contents: read`, concurrency and the four jobs (`ruff`, `python` ×6, `frontend`, `e2e`) described above.
 2. Every `uses:` is a 40-hex SHA with a version comment. uv, ruff and Bun versions are exact.
 3. `actionlint` reports no errors for the workflow.
-4. Locally, each job's commands pass from its working directory. Locally this already means `ruff check .`, `ruff format --check .`, `make typecheck`, `make test`, `bun run build`, `bun run test -- --watch=false` and `bun run e2e`.
+4. Locally, each job's commands pass from its working directory. Locally this already means `ruff check .`, `ruff format --check .`, `make typecheck`, `make test`, `bun run build`, `bun run test --watch=false` and `bun run e2e`.
 5. On GitHub, the workflow runs on a PR from this branch, and every job is green, including all six matrix legs and both Playwright browsers.
 6. Hand check on a scratch commit in that PR (reverted before merge): a new mypy error or a failing test turns the matching matrix leg red while the other legs stay green, which confirms `fail-fast: false`.
 7. If the mypy baseline differs on 3.14.2 in CI compared with the devcontainer, the difference is recorded here with how it was resolved.
