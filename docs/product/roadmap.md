@@ -10,7 +10,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [x] F2 [M] Characterization tests for the BFF: login, callback, `/me` and the proxy, including current header forwarding
 - [x] F3 [S] Characterization tests for `rs_dpop` token and DPoP validation
 - [x] F4 [M] First tests for the email-notification and cleanup-buckets workers
-- [ ] F5 [S] Shared root `ruff.toml`, with existing findings fixed
+- [x] F5 [S] Shared root `ruff.toml`, with existing findings fixed
 - [ ] F6 [M] `mypy --strict` config per service, with the current errors recorded as a baseline
 - [ ] F7 [S] Pytest config and `pytest-cov` in every service, plus a fix for the broken Vitest spec
 - [ ] F8 [M] GitHub Actions CI: Python matrix (ruff, mypy, pytest) plus frontend build, Vitest and Playwright
