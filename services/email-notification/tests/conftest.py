@@ -15,14 +15,6 @@ worker_module = importlib.import_module("email_notification.main")
 NotificationWorker = worker_module.NotificationWorker
 
 
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers",
-        "known_bug: characterization test pinning current buggy behaviour; "
-        "the comment names the roadmap item that changes it",
-    )
-
-
 @pytest.fixture
 def consumers(monkeypatch):
     """Patch AIOKafkaConsumer with FakeConsumer; returns every instance created."""

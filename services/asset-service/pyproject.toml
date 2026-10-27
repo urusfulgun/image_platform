@@ -26,6 +26,7 @@ dev = [
     "pytest-mock>=3.15.1",
     "httpx>=0.28.1",
     "aiosqlite>=0.21.1",
+    "pytest-cov>=7.1.0",
 ]
 
 [build-system]
@@ -34,6 +35,31 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 shared-core = { path = "../shared-core", editable = true }
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra"]
+strict_markers = true
+strict_config = true
+xfail_strict = true
+markers = [
+    "known_bug: characterization test pinning current buggy behaviour; the comment names the roadmap item that changes it",
+]
+
+[tool.coverage.run]
+source = ["asset_service"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 79
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
 
 [tool.mypy]
 python_version = "3.14"

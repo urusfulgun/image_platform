@@ -12,14 +12,6 @@ os.environ.setdefault("S3_SECRET_KEY", "test-secret-key")
 os.environ.setdefault("RUSTFS_WEBHOOK_TOKEN", "test-webhook-token")
 
 
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers",
-        "known_bug: characterization test pinning current buggy behaviour; "
-        "the comment names the roadmap item that changes it",
-    )
-
-
 @pytest.fixture
 def sample_user_id():
     return uuid.uuid4()

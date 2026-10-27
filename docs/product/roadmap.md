@@ -12,7 +12,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [x] F4 [M] First tests for the email-notification and cleanup-buckets workers
 - [x] F5 [S] Shared root `ruff.toml`, with existing findings fixed
 - [x] F6 [M] `mypy --strict` config per service, with the current errors recorded as a baseline
-- [ ] F7 [S] Pytest config and `pytest-cov` in every service, plus a fix for the broken Vitest spec. (The Vitest spec `app.spec.ts` is already fixed and passing. Still open: the pytest config and `pytest-cov`.)
+- [x] F7 [S] Pytest config and `pytest-cov` in every service, plus a fix for the broken Vitest spec
 - [ ] F8 [M] GitHub Actions CI: Python matrix (ruff, mypy, pytest) plus frontend build, Vitest and Playwright
 - [ ] F9 [S] Pin every image tag, including `uv`, and fix the misnamed `.dockerignore` files
 - [ ] F10 [S] Renovate or Dependabot for `uv.lock`, `bun.lock` and Docker tags

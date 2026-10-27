@@ -4,7 +4,7 @@ SERVICES := kafka kafka-ui debezium debezium-configurator postgres-keycloak post
 
 PYTHON_SERVICES := shared-core asset-service bff-token-handler image-processor email-notification cleanup-buckets
 
-.PHONY: up down restart status logs clean typecheck help
+.PHONY: up down restart status logs clean typecheck test help
 
 ## up: Start only Postgres and Keycloak in the background
 up:
@@ -38,6 +38,13 @@ typecheck:
 	@status=0; for s in $(PYTHON_SERVICES); do \
 		echo "== $$s"; \
 		(cd services/$$s && uv run --quiet --extra dev python ../../scripts/mypy_check.py) || status=1; \
+	done; exit $$status
+
+## test: Run pytest with coverage in every Python service; fails below its fail_under floor
+test:
+	@status=0; for s in $(PYTHON_SERVICES); do \
+		echo "== $$s"; \
+		(cd services/$$s && uv run --quiet --extra dev pytest --cov) || status=1; \
 	done; exit $$status
 
 ## help: Show this help message

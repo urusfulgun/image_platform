@@ -52,7 +52,7 @@ Angular 21.1.5 (core, Material/CDK 21.1.5; CLI/build 21.1.4), standalone + zonel
 - **DB schema**: `init-db/postgres-image-metadata/*.sql` on first init only; no migrations.
 - **Lint/format**: one root `ruff.toml` (`required-version >=0.17.2`, line length 88, py314). Rules: E, W, F, I, UP, B, SIM, RUF, S, T20, ASYNC, with S101/S105/S106 ignored in tests. The tree is clean for `ruff check` and `ruff format --check`. Format commits are listed in `.git-blame-ignore-revs`. Not enforced yet (F8). ruff is installed as a uv tool, not locked.
 - **Type checking**: mypy 2.4.0, locked in each service's `dev` extra. `[tool.mypy]` in each `pyproject.toml` sets `strict` for `src`, relaxes `tests.*` (no annotations required, bodies still checked), adds the pydantic plugin, and ignores the untyped `aiokafka`. shared-core ships `py.typed`. Each service has a committed `mypy-baseline.txt`, checked by `scripts/mypy_check.py`, which fails on new or stale entries. `make typecheck` runs it for every service. The baseline holds 170 entries: shared-core 15, asset-service 76, bff-token-handler 37, image-processor 24, email-notification 7, cleanup-buckets 11. Not enforced yet (F8).
-- **Tests**: pytest 9.0.2, pytest-asyncio 1.3.0, pytest-mock; no pytest config, no coverage. asset-service has API characterization tests (`tests/api/`, httpx ASGITransport against in-memory aiosqlite, with a `known_bug` marker). email-notification and cleanup-buckets have characterization tests with fake Kafka, S3 and SMTP clients.
+- **Tests**: pytest 9.0.2, pytest-asyncio 1.3.0, pytest-mock, pytest-cov 7.1.0 (coverage 7.17.0), all locked in each service's `dev` extra. Each `pyproject.toml` has `[tool.pytest.ini_options]` (`testpaths`, `strict_markers`, `strict_config`, `xfail_strict`, the `known_bug` marker) and `[tool.coverage.*]`: branch coverage of the service's own package, with a `fail_under` floor taken from the measured total (shared-core 64, asset-service 79, bff-token-handler 82, image-processor 38, email-notification 71, cleanup-buckets 77). Coverage runs only with `--cov`. `make test` runs every suite with coverage. Not enforced yet (F8). asset-service has API characterization tests (`tests/api/`, httpx ASGITransport against in-memory aiosqlite, with a `known_bug` marker). email-notification and cleanup-buckets have characterization tests with fake Kafka, S3 and SMTP clients.
 - **CI**: none.
 - **Dependency updates**: manual.
 
@@ -62,7 +62,7 @@ Angular 21.1.5 (core, Material/CDK 21.1.5; CLI/build 21.1.4), standalone + zonel
 - **CI**: GitHub Actions, using a per-service matrix to run ruff, mypy and pytest for the Python services, and the build, Vitest and Playwright for the frontend, on every PR.
 - **Lint/format**: one shared root `ruff.toml` with an agreed rule set, enforced in CI.
 - **Type checking**: `mypy --strict` per service, enforced in CI. Existing errors get fixed gradually.
-- **Tests**: add `[tool.pytest.ini_options]` and `pytest-cov` to each service. Every service must have tests. The stack stays pytest, Vitest and Playwright.
+- **Tests**: every service must have tests, and coverage floors only go up. The stack stays pytest, Vitest and Playwright.
 - **Dependency updates**: Renovate or Dependabot opens PRs for `uv.lock`, `bun.lock` and Docker image tags, and CI gates them.
 - **DB schema**: Alembic migrations for asset-service replace the `init-db` SQL.
 

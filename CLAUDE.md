@@ -53,11 +53,13 @@ cd services/<service>
 uv sync --extra dev                          # test deps are an optional extra named "dev", not a dependency group
 uv run --extra dev pytest                    # whole suite
 uv run --extra dev pytest tests/test_logout.py::test_name -q   # single test
+uv run --extra dev pytest --cov              # suite + branch coverage; fails below the service's fail_under floor
 ruff check . && ruff format .                # lint/format (ruff installed as a uv tool)
 uv run --extra dev python ../../scripts/mypy_check.py   # mypy vs mypy-baseline.txt; fails on new or fixed-but-still-listed errors
 uv run --extra dev python ../../scripts/mypy_check.py --update   # rewrite the baseline after fixing errors
 ```
 `make typecheck` (repo root) runs the mypy check in every Python service. Config is `[tool.mypy]` in each `pyproject.toml`: strict for `src`, relaxed for `tests.*`. Tests are packages, so import helpers as `from tests.api.helpers import …`.
+`make test` (repo root) runs `pytest --cov` in every Python service. Pytest and coverage config live in each `pyproject.toml` (`[tool.pytest.ini_options]`, `[tool.coverage.*]`). `strict_markers` is on, so register new markers there; `known_bug` is already registered. Raise `fail_under` by hand when coverage goes up.
 Async tests use `@pytest.mark.asyncio` explicitly (no `asyncio_mode` configured). Tests mock Redis, DB, Kafka and S3 with `AsyncMock`/`pytest-mock` and don't need the running stack.
 
 ### Frontend (Angular 21 + Bun)

@@ -16,14 +16,6 @@ KafkaCleanupWorker = worker_module.KafkaCleanupWorker
 S3_CONFIG = {"endpoint_url": "http://s3-test:9000", "region_name": "test-region"}
 
 
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers",
-        "known_bug: characterization test pinning current buggy behaviour; "
-        "the comment names the roadmap item that changes it",
-    )
-
-
 @pytest.fixture
 def calls(monkeypatch):
     """Patch the aiokafka clients with fakes; returns their shared call log."""
