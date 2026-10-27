@@ -4,7 +4,7 @@ services:
     volumes:
       - ..:/workspaces/image_platform:cached
     networks:
-      - backend-net  # Attach the dev service here
+      - image-platform-network  # Attach the dev service here
     tty: true
 
 networks:

@@ -2,19 +2,22 @@ import asyncio
 import io
 import json
 import logging
+import os
 import signal
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from aiobotocore.config import AioConfig
-from PIL import Image, ImageFile
+
 import aioboto3
-from fastapi import FastAPI, Response, status
 import uvicorn
+from aiobotocore.config import AioConfig
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from fastapi import FastAPI, Response, status
+from PIL import Image, ImageFile
+
 from shared_core.events.kafka_events import (
     DLQImageProcessingEventPayload,
-    ImageAvifReadyEvent,  # Note: You may need to update this schema to include preview_s3_path
+    # Note: You may need to update this schema to include preview_s3_path
+    ImageAvifReadyEvent,
     ImageRawUploadedEvent,
 )
-
 from shared_core.utils.s3_object_key import get_s3_object_key
 
 logging.basicConfig(level=logging.INFO)
@@ -34,15 +37,15 @@ async def health_check():
     """
     if not worker_instance:
         return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
-    
+
     # Check if Kafka components are running
     # Note: _closed is an internal state, but useful for basic liveness
     is_consumer_ok = worker_instance.consumer is not None
     is_producer_ok = worker_instance.producer is not None
-    
+
     if is_consumer_ok and is_producer_ok:
         return {"status": "healthy", "worker": "active"}
-    
+
     return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
@@ -83,7 +86,8 @@ class KafkaImageWorker:
         await self.consumer.start()
         await self.producer.start()
         logger.info(
-            f"Processor live. Raw Bucket: {self.raw_bucket} -> Processed Bucket: {self.processed_bucket}"
+            f"Processor live. Raw Bucket: {self.raw_bucket} -> "
+            f"Processed Bucket: {self.processed_bucket}"
         )
 
         try:
@@ -160,7 +164,7 @@ class KafkaImageWorker:
                 project_id=event.project_id,
                 processed_s3_path=main_img["path"],
                 preview_s3_path=preview_img["path"],
-                processed_format='avif',
+                processed_format="avif",
             )
             await self.producer.send_and_wait(
                 self.SUCCESS_TOPIC, ready_event.model_dump(mode="json")
@@ -214,7 +218,9 @@ async def main():
     )
 
     # Setup FastAPI server to run in the background
-    config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="error")
+    # 0.0.0.0 is required so the health port is reachable from outside the container.
+    health_host = os.getenv("HEALTH_HOST", "0.0.0.0")  # noqa: S104
+    config = uvicorn.Config(app, host=health_host, port=8080, log_level="error")
     server = uvicorn.Server(config)
 
     stop_event = asyncio.Event()
@@ -227,7 +233,7 @@ async def main():
         async with asyncio.TaskGroup() as tg:
             w_task = tg.create_task(worker_instance.run())
             _ = tg.create_task(server.serve())
-            
+
             # Wait until a shutdown signal is received
             await stop_event.wait()
             logger.info("Shutdown signal received.")
@@ -235,8 +241,8 @@ async def main():
             server.should_exit = True
             logger.info("Initiating graceful shutdown...")
             w_task.cancel()
-            
-            # When we exit this block, all remaining tasks (worker/server) 
+
+            # When we exit this block, all remaining tasks (worker/server)
             # are automatically cancelled and awaited.
     except* asyncio.CancelledError:
         # This is expected when we cancel w_task

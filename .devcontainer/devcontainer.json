@@ -1,46 +1,82 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the
-// README at: https://github.com/devcontainers/templates/tree/main/src/docker-existing-docker-compose
 {
-	"name": "Image Platform",
-	// Update the 'dockerComposeFile' list if you have more compose files or use different names.
-	// The .devcontainer/docker-compose.yml file contains any overrides you need/want to make.
-	// "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
-	"dockerComposeFile": "../.devcontainer/docker-compose.yaml",
-	// The 'service' property is the name of the service for the container that VS Code should
-	// use. Update this value and .devcontainer/docker-compose.yml to the real service name.
-	"service": "devcontainer",
-	// The optional 'workspaceFolder' property is the path VS Code should open by default when
-	// connected. This is typically a file mount in .devcontainer/docker-compose.yml
-	// "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
-	"workspaceFolder": "/workspaces/image_platform",
-	"remoteEnv": {
-        "LOCAL_WORKSPACE_FOLDER_BASENAME": "${localWorkspaceFolderBasename}"
+    "name": "Image Platform + Claude Code",
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+    "runArgs": [
+        "--network=image-platform-network",
+        "--network-alias=devcontainer" // Optional: gives your dev container a predictable hostname
+    ],
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "22"
+        },
+        "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
+        "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+            "version": "latest",
+            "enableNonRootDocker": "true",
+            "moby": "false"
+        }
     },
-    "containerEnv": {
-        "LOCAL_WORKSPACE_FOLDER_BASENAME": "${localWorkspaceFolderBasename}"
+    "onCreateCommand": "sudo apt-get update && sudo chown -R vscode:vscode /home/vscode/.local /home/vscode/.claude && curl -LsSf https://astral.sh/uv/install.sh | sh && $HOME/.local/bin/uv self update && $HOME/.local/bin/uv python install 3.14.8 && $HOME/.local/bin/uv tool install ruff && $HOME/.local/bin/uv tool install mypy && curl -fsSL https://bun.sh/install | bash -s bun-v1.3.9 && echo 'source $HOME/.local/bin/env' >> ~/.bashrc && echo 'eval \"$(~/.local/bin/uv generate-shell-completion bash)\"' >> ~/.bashrc && mkdir -p ~/.npm-global && npm config set prefix ~/.npm-global && npm install -g @anthropic-ai/claude-code && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.bashrc",
+    "remoteEnv": {
+        "PATH": "/home/vscode/.local/bin:/home/vscode/.bun/bin:${containerEnv:PATH}",
+        "UV_PYTHON": "3.14.8",
+        // Pass your host ANTHROPIC_API_KEY into the container (never hardcode it here).
+        // Set the variable in your host shell before opening the devcontainer.
+        "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
     },
-	// Features to add to the dev container. More info: https://containers.dev/features.
-	"features": {
-		"ghcr.io/devcontainers/features/common-utils:1": {}
-	},
-	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	// "forwardPorts": [],
-	// Uncomment the next line if you want start specific services in your Docker Compose config.
-	// "runServices": [],
-	// Uncomment the next line if you want to keep your containers running after VS Code shuts down.
-	// "shutdownAction": "none",
-	// Uncomment the next line to run commands after the container is created.
-	"postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && source $HOME/.cargo/env && uv python install 3.14.2 && uv sync && curl -fsSL https://bun.sh/install | bash",
-	// Configure tool-specific properties.
-	"customizations": {
-		"antigravity": {
-			"settings": {
-				"agent.autonomyLevel": "always_proceed",
-				"agent.terminalAccess": true,
-				"python.defaultInterpreterPath": "/workspaces/image_platform/.venv/bin/python"
-			}
-		}
-	},
-	// Uncomment to connect as an existing user other than the container default. More info: https://aka.ms/dev-containers-non-root.
-	"remoteUser": "vscode"
+    // Persist ~/.claude across container rebuilds so sessions/settings survive.
+    // target must be a literal absolute path — variable substitution is not supported in mounts.
+    // /root is the home dir when running as root (the default). Change to /home/vscode if remoteUser is "vscode".
+    "mounts": [
+        "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume",
+        "source=claude-code-data-${devcontainerId},target=/home/vscode/.local/share/claude,type=volume"
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "anthropic.claude-code",
+                "charliermarsh.ruff",
+                "ms-python.mypy-type-checker",
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "redhat.vscode-yaml"
+            ],
+            "settings": {
+                // Use Ruff as the default formatter
+                "editor.defaultFormatter": "charliermarsh.ruff",
+                "editor.formatOnSave": true,
+                "[python]": {
+                    "editor.defaultFormatter": "charliermarsh.ruff",
+                    "editor.codeActionsOnSave": {
+                        "source.fixAll.ruff": "explicit",
+                        "source.organizeImports.ruff": "explicit"
+                    }
+                },
+                // Point the Python extension at the project venv created by `uv sync`,
+                // not the base uv interpreter — otherwise Pylance/mypy cannot resolve
+                // Django and the other project dependencies.
+                "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+                "mypy-type-checker.reportingScope": "workspace",
+                "mypy-type-checker.preferDaemon": true,
+                "mypy-type-checker.args": [
+                    "--strict"
+                ],
+                "python.terminal.activateEnvironment": true,
+                // Disable the built-in linters in favour of Ruff
+                "python.linting.enabled": false,
+                "ruff.enable": true
+            }
+        }
+    },
+    // Forward ports if you run a dev server (adjust as needed)
+    "forwardPorts": [
+        8000
+    ],
+    // Uncomment to run as non-root (recommended for production-like setups)
+    "remoteUser": "vscode",
+    // Creates .venv and the frontend node_modules so the workspace is usable
+    // straight after a rebuild, then reports the toolchain.
+    // The Bun pin in onCreateCommand (bun-v1.3.9) must match "packageManager"
+    // in services/frontend/package.json.
+    "postCreateCommand": "uv sync && (cd services/frontend && bun install --frozen-lockfile) && uv --version && uv python list && ruff --version && mypy --version && bun --version && claude --version"
 }

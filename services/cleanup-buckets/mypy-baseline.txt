@@ -1,0 +1,12 @@
+# mypy errors accepted for now (roadmap F6). Regenerate with --update.
+src/cleanup_buckets/main.py: error: Call to untyped function "main" in typed context  [no-untyped-call]
+src/cleanup_buckets/main.py: error: Call to untyped function "run" in typed context  [no-untyped-call]
+src/cleanup_buckets/main.py: error: Function is missing a return type annotation  [no-untyped-def]
+src/cleanup_buckets/main.py: error: Function is missing a return type annotation  [no-untyped-def]
+src/cleanup_buckets/main.py: error: Function is missing a return type annotation  [no-untyped-def]
+src/cleanup_buckets/main.py: error: Function is missing a return type annotation  [no-untyped-def]
+src/cleanup_buckets/main.py: error: Function is missing a return type annotation  [no-untyped-def]
+src/cleanup_buckets/main.py: error: Missing type arguments for generic type "dict"  [type-arg]
+src/cleanup_buckets/main.py: error: Missing type arguments for generic type "dict"  [type-arg]
+tests/conftest.py: error: Need type annotation for "log" (hint: "log: list[<type>] = ...")  [var-annotated]
+tests/fakes.py: error: Need type annotation for "failing_keys" (hint: "failing_keys: dict[<type>, <type>] = ...")  [var-annotated]

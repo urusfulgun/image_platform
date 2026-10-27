@@ -4,17 +4,15 @@ Mirrors the init-db/postgres-image-metadata/01._init.sql schema.
 """
 
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import (
+    TIMESTAMP,
     BigInteger,
     ForeignKey,
     Integer,
     String,
     Text,
-    TIMESTAMP,
-    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -38,10 +36,10 @@ class UserModel(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
 
-    projects: Mapped[list["ProjectModel"]] = relationship(
+    projects: Mapped[list[ProjectModel]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -57,14 +55,14 @@ class ProjectModel(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    name: Mapped[Optional[str]] = mapped_column(String(255))
+    name: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
 
-    user: Mapped["UserModel"] = relationship(back_populates="projects")
-    images: Mapped[list["ImageMetadataModel"]] = relationship(
+    user: Mapped[UserModel] = relationship(back_populates="projects")
+    images: Mapped[list[ImageMetadataModel]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
 
@@ -86,23 +84,21 @@ class ImageMetadataModel(Base):
     raw_format: Mapped[str] = mapped_column(String(255), nullable=False)
     raw_s3_path: Mapped[str] = mapped_column(Text, nullable=False)
     processed_format: Mapped[str] = mapped_column(String(255), nullable=True)
-    processed_s3_path: Mapped[Optional[str]] = mapped_column(Text)
-    preview_s3_path: Mapped[Optional[str]] = mapped_column(Text)
-    file_size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger)
-    dimensions_px: Mapped[Optional[str]] = mapped_column(String(20))
+    processed_s3_path: Mapped[str | None] = mapped_column(Text)
+    preview_s3_path: Mapped[str | None] = mapped_column(Text)
+    file_size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    dimensions_px: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     deleted_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
-        default=None,
-        nullable=True
+        TIMESTAMP(timezone=True), default=None, nullable=True
     )
     deleted: Mapped[bool] = mapped_column(default=False)
 
-    project: Mapped["ProjectModel"] = relationship(back_populates="images")
-    status: Mapped["ImageProcessingStatusModel"] = relationship(
+    project: Mapped[ProjectModel] = relationship(back_populates="images")
+    status: Mapped[ImageProcessingStatusModel] = relationship(
         back_populates="image", cascade="all, delete-orphan"
     )
 
@@ -119,11 +115,11 @@ class ImageProcessingStatusModel(Base):
     )
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING")
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_error_log: Mapped[Optional[str]] = mapped_column(Text)
+    last_error_log: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
-    image: Mapped["ImageMetadataModel"] = relationship(back_populates="status")
+    image: Mapped[ImageMetadataModel] = relationship(back_populates="status")

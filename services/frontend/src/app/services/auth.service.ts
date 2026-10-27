@@ -11,7 +11,7 @@ export class AuthService {
     user = signal<any>(null);
 
     checkAuth() {
-        this.http.get('http://localhost:8000/me', { withCredentials: true })
+        this.http.get('http://image-platform:8000/me', { withCredentials: true })
             .subscribe({
                 next: (data) => this.user.set(data),
                 error: () => this.user.set(null)

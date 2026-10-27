@@ -3,7 +3,7 @@
 Routes:
   GET  /login        → Redirect to KeyCloak PKCE auth URL
   GET  /callback     → Exchange code, store session, set HttpOnly cookie
-  POST /logout       → Delete session, clear cookie
+  POST /logout       → End Keycloak session, delete session, clear cookie
   GET  /me           → Return user info from current session
   ANY  /proxy/{path} → Authenticated reverse proxy to AssetService
 """
@@ -11,14 +11,14 @@ Routes:
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from urllib.parse import urlencode
 
-from shared_core.schemas.security.user_session import UserSession
-
-from bff_token_handler.auth.dpop import decode_jwt_token, generate_ec_key_pair
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from keycloak import KeycloakAuthenticationError, KeycloakError, KeycloakOpenID
 
+from bff_token_handler.auth.dpop import decode_jwt_token, generate_ec_key_pair
 from bff_token_handler.auth.oauth import (
     build_auth_url,
     exchange_code,
@@ -28,19 +28,18 @@ from bff_token_handler.auth.oauth import (
     revoke_token_at_keycloak,
 )
 from bff_token_handler.proxy.reverse_proxy import proxy_request
-from keycloak import KeycloakAuthenticationError, KeycloakOpenID, pkce_utils
 from bff_token_handler.session.redis_store import (
-    SessionStore,
     CodeVerifierStore,
-    RedisSession,
-    get_session_store,
+    SessionStore,
     get_code_verifier_store,
     get_redis_session,
+    get_session_store,
 )
-from bff_token_handler.settings import settings, keycloak_config
+from bff_token_handler.settings import keycloak_config, settings
 from shared_core.dto.key_pair import KeyPair
 from shared_core.schemas.responses.profile import UserProfileResponse
 from shared_core.schemas.security.token_set import TokenSet
+from shared_core.schemas.security.user_session import UserSession
 
 # --- Temporary in-memory store for PKCE state/verifier (per-request) ---
 # In production use Redis with short TTL; fine for demo.
@@ -72,7 +71,7 @@ async def lifespan(app: FastAPI):
 
 # Define specifically allowed origins
 origins = [
-    "http://localhost:80",  # Angular Default
+    "http://image-platform",  # SPA via nginx
     "http://127.0.0.1:80",
     "http://rustfs:9000",
 ]
@@ -94,9 +93,11 @@ app.add_middleware(
     # expose_headers=["DPoP"],  # If you need Angular to read DPoP headers
 )
 
+
 @app.get("/health", tags=["ops"])
 async def health():
     return JSONResponse({"status": "ok"})
+
 
 # ---------------------------------------------------------------------------
 # Auth routes
@@ -148,7 +149,7 @@ async def callback(request: Request, code: str, state: str):
         value=session_id,
         httponly=True,
         samesite="strict",
-        secure=False,  # Set True in production with HTTPS
+        secure=settings.session_cookie_secure,
         max_age=settings.session_ttl_seconds,
         path="/",
     )
@@ -164,40 +165,52 @@ async def logout(request: Request):
         return JSONResponse({"detail": "Already logged out"}, status_code=200)
 
     # 1. Retrieve tokens and DPoP key from the secure store
-    user_session: UserSession = await session_store.get(session_id)
-    token_set: TokenSet = user_session.token_set
-    key_pair: KeyPair = user_session.key_pair
+    user_session: UserSession | None = await session_store.get(session_id)
 
-    if user_session:
-        # 2. Revoke the Refresh Token at Keycloak (DPoP bound) (leverage DPoP private key)
-        # This prevents anyone from using the stolen refresh token later.
-        # await revoke_token_at_keycloak(
-        #     refresh_token=token_set.refresh_token,
-        #     dpop_key_pair=key_pair,
-        # )
+    if user_session is None:
+        # Session already expired in Redis; just clear the stale cookie
+        response = JSONResponse({"detail": "Already logged out"}, status_code=200)
+    else:
+        token_set: TokenSet = user_session.token_set
+
+        # 2. End the Keycloak session back-channel so the refresh token is dead
+        # even if the browser never follows the front-channel logoutUrl.
+        # Best effort: a Keycloak failure must not block local logout.
+        revoked = False
+        if token_set.refresh_token:
+            try:
+                await revoke_token_at_keycloak(
+                    refresh_token=token_set.refresh_token,
+                    dpop_key_pair=user_session.key_pair,
+                )
+                revoked = True
+            except KeycloakError as e:
+                log.warning(f"Keycloak back-channel logout failed: {e}")
 
         # 3. Delete the server-side session
         await session_store.delete(session_id)
 
-    # 4. Prepare the OIDC End Session URL for the frontend
-    # Including id_token_hint prevents the Keycloak "Do you want to logout?" prompt.
-    keycloak_logout_url = (
-        f"{settings.keycloak_url}/realms/{settings.realm}/protocol/openid-connect/logout"
-        f"?id_token_hint={token_set.id_token}"
-        f"&post_logout_redirect_uri={settings.frontend_url}"
-    )
+        # 4. Prepare the OIDC End Session URL for the frontend; it clears the
+        # Keycloak SSO cookies in the browser.
+        # Including id_token_hint prevents the Keycloak "Do you want to logout?" prompt.
+        query = urlencode(
+            {
+                "id_token_hint": token_set.id_token,
+                "post_logout_redirect_uri": settings.frontend_url,
+            }
+        )
+        keycloak_logout_url = f"{settings.logout_url}?{query}"
 
-    response = JSONResponse(
-        {"detail": "Logged out locally and revoked", "logoutUrl": keycloak_logout_url}
-    )
+        detail = "Logged out and revoked" if revoked else "Logged out locally"
+        response = JSONResponse({"detail": detail, "logoutUrl": keycloak_logout_url})
 
     # 5. Clear the HttpOnly session cookie
     response.delete_cookie(
         key=settings.session_cookie_name,
         path="/",
         httponly=True,
-        samesite="lax",  # or "strict"
-        secure=True,
+        samesite="strict",
+        secure=settings.session_cookie_secure,
     )
 
     return response
@@ -224,8 +237,15 @@ async def me(request: Request):
     try:
         user_info_token = await introspect_token(key_pair, token_set.access_token)
     except KeycloakAuthenticationError as e:
-        return JSONResponse({"detail": f"Not authenticated extra: {e.error_message}"}, status_code=e.response_code)
-    _, claims, _ = decode_jwt_token(user_info_token)
+        return JSONResponse(
+            {"detail": f"Not authenticated extra: {e.error_message}"},
+            status_code=e.response_code,
+        )
+    # Userinfo is plain JSON unless the client has signed userinfo responses enabled
+    if isinstance(user_info_token, dict):
+        claims = user_info_token
+    else:
+        _, claims, _ = decode_jwt_token(user_info_token)
     user_info = UserProfileResponse.model_validate(claims)
     return JSONResponse({"id_token": user_info.model_dump(mode="json")})
 

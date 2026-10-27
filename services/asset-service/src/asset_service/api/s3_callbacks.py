@@ -1,22 +1,19 @@
 import logging
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+
 from asset_service.dependencies.clients import get_kafka_producer
 from asset_service.dependencies.domain import get_image_service
 from asset_service.domain.images import ImageService
 from asset_service.kafka.producer import AssetKafkaProducer
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
+from asset_service.settings import settings
 from shared_core.events.kafka_events import ImageRawUploadedEvent
-
 
 router = APIRouter(prefix="/callback", tags=["callbacks"])
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-
-# This should match the 'auth_token' in your rustfs config.toml
-RUSTFS_SECRET_TOKEN = "your-secure-shared-secret"
 
 
 async def verify_rustfs_token(
@@ -28,9 +25,10 @@ async def verify_rustfs_token(
     payload = await request.json()
     headers = request.headers
     webhook_token = authorization.split(" ")[1]
-    if webhook_token != RUSTFS_SECRET_TOKEN:
+    if webhook_token != settings.rustfs_webhook_token:
         log.warning(
-            f"Unauthorized callback attempt with token: {webhook_token}. Headers {headers} and Payload \n {payload};"
+            f"Unauthorized callback attempt with token: {webhook_token}. "
+            f"Headers {headers} and Payload \n {payload};"
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -73,7 +71,7 @@ async def rustfs_event_callback(
 
     except Exception as e:
         log.error(f"Rustfs callback failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal processing error")
+        raise HTTPException(status_code=500, detail="Internal processing error") from e
 
 
 async def handle_upload_event(

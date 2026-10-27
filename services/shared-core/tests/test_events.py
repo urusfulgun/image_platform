@@ -1,23 +1,25 @@
 """Tests for Kafka event schemas."""
+
 import uuid
-from datetime import datetime, timezone
 
 from shared_core.events.kafka_events import (
-    UserRegisteredEvent,
-    ImageRawUploadedEvent,
-    ImageAvifReadyEvent,
     CleanupRequestedEvent,
+    ImageAvifReadyEvent,
+    ImageRawUploadedEvent,
 )
+from shared_core.schemas.debezium.events import KeycloakUserEvent
 
 
-def test_user_registered_event_defaults():
-    event = UserRegisteredEvent(
-        kc_sub=uuid.uuid4(),
-        email="bob@example.com",
+def test_keycloak_user_event_from_debezium_payload():
+    kc_id = str(uuid.uuid4())
+    event = KeycloakUserEvent.model_validate(
+        {"id": kc_id, "email": "bob@example.com", "__op": "c", "__deleted": "false"}
     )
-    assert event.event_id is not None
+    assert event.sub == kc_id
     assert event.email == "bob@example.com"
-    assert event.occurred_at is not None
+    assert event.op == "c"
+    assert event.deleted is False
+    assert event.enabled is True
 
 
 def test_image_raw_uploaded_event():
@@ -40,8 +42,12 @@ def test_image_avif_ready_event():
         image_id=uuid.uuid4(),
         project_id=uuid.uuid4(),
         processed_s3_path="processed/photo.avif",
+        preview_s3_path="processed/preview_tile.avif",
+        processed_format="avif",
     )
     assert event.processed_s3_path == "processed/photo.avif"
+    assert event.preview_s3_path == "processed/preview_tile.avif"
+    assert event.processed_format == "avif"
 
 
 def test_event_json_roundtrip():
@@ -63,3 +69,10 @@ def test_cleanup_requested_event():
         raw_s3_path="raw/old.jpg",
     )
     assert event.raw_s3_path == "raw/old.jpg"
+
+
+def test_keycloak_user_event_deleted_flag_parsed_as_bool():
+    event = KeycloakUserEvent.model_validate(
+        {"id": str(uuid.uuid4()), "__op": "d", "__deleted": "true"}
+    )
+    assert event.deleted is True

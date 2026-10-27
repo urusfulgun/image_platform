@@ -1,9 +1,9 @@
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
-from asset_service.s3.client import ensure_buckets
 from fastapi import FastAPI
 
+from asset_service.s3.client import ensure_buckets
 
 log = logging.getLogger(__name__)
 

@@ -1,15 +1,17 @@
 import asyncio
-import logging
 import json
+import logging
 from contextlib import asynccontextmanager
-from asset_service.db.session import AsyncSessionLocal
-from fastapi import FastAPI
+
 from aiokafka import AIOKafkaConsumer
+from fastapi import FastAPI
+
+from asset_service.db.session import AsyncSessionLocal
 
 # Assuming these are imported from your project structure
 from asset_service.domain.images import ImageService
-from shared_core.events.kafka_events import ImageAvifReadyEvent
 from asset_service.settings import settings
+from shared_core.events.kafka_events import ImageAvifReadyEvent
 
 log = logging.getLogger(__name__)
 

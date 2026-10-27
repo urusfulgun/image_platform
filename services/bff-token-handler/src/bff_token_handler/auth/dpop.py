@@ -4,17 +4,15 @@ Generates an RSA key pair at module load. The private key is kept in memory
 only — tokens bound to this key are useless without it.
 """
 
+import base64
+import hashlib
 import json
 import secrets
 import time
-from typing import NamedTuple
-import uuid
-import base64
-import hashlib
 
-from cryptography.hazmat.primitives.asymmetric import rsa, padding, ec, utils
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec, utils
+
 from shared_core.dto.key_pair import KeyPair
 
 COORD_LEN = 32
@@ -108,34 +106,46 @@ def _encode_header_payload(header: dict, payload: dict) -> bytes:
     return f"{h_b64}.{p_b64}".encode("ascii")
 
 
-def decode_jwt_token(token: str):
+def _b64url_decode(data: str) -> bytes:
+    """Decode a Base64URL string, restoring the padding stripped per RFC 7515."""
+    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
+
+
+def _decode_json_segment(segment: str) -> dict:
+    """Decode a Base64URL JWS segment that must hold a JSON object."""
+    value = json.loads(_b64url_decode(segment))
+    if not isinstance(value, dict):
+        # Malformed token content, not a caller type error
+        raise ValueError("Invalid token format. Expected a JSON object segment.")
+    return value
+
+
+def decode_jwt_token(token: str) -> tuple[dict, dict, bytes]:
+    """Split a compact JWS into its decoded parts WITHOUT verifying the signature.
+
+    Only use on tokens received directly from Keycloak over a trusted channel.
+
+    Returns:
+        (header, payload, signature) — the signature stays raw bytes.
+
+    Raises:
+        TypeError: token is not a string.
+        ValueError: token is not a well-formed compact JWS.
     """
-    Reverses the encoding of a JWT token.
-    Returns: (header_dict, payload_dict, signature_bytes)
-    """
-    # 1. Split the string into its 3 Base64URL components
+    # Never echo the token itself: it is a credential and errors end up in logs
+    if not isinstance(token, str):
+        raise TypeError(f"Expected token type str. Got {type(token).__name__}.")
+
     parts = token.split(".")
     if len(parts) != 3:
         raise ValueError("Invalid token format. Expected 3 parts.")
-
     h_b64, p_b64, s_b64 = parts
 
-    def _un_b64url(data: str) -> bytes:
-        # Add back required padding for the base64 library
-        missing_padding = len(data) % 4
-        if missing_padding:
-            data += "=" * (4 - missing_padding)
-        return base64.urlsafe_b64decode(data)
-
-    # 2. Decode Header and Payload back into Dictionaries
-    header = json.loads(_un_b64url(h_b64).decode("utf-8"))
-    payload = json.loads(_un_b64url(p_b64).decode("utf-8"))
-
-    # 3. Decode Signature back into raw Bytes
-    # (The signature remains bytes because it's cryptographic data, not JSON)
-    raw_signature = _un_b64url(s_b64)
-
-    return header, payload, raw_signature
+    return (
+        _decode_json_segment(h_b64),
+        _decode_json_segment(p_b64),
+        _b64url_decode(s_b64),
+    )
 
 
 def create_dpop_proof(

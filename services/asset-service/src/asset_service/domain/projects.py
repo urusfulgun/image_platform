@@ -1,20 +1,23 @@
 """Project domain services."""
+
 import uuid
-from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from asset_service.db.models import ProjectModel
-from shared_core.errors import NotFoundError, ForbiddenError
-from shared_core.models.project import ProjectSchema, CreateProjectRequest
+from shared_core.errors import ForbiddenError, NotFoundError
+from shared_core.models.project import CreateProjectRequest
 
 
 class ProjectService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def create(self, user_id: uuid.UUID, req: CreateProjectRequest) -> ProjectModel:
+    async def create(
+        self, user_id: uuid.UUID, req: CreateProjectRequest
+    ) -> ProjectModel:
         project = ProjectModel(user_id=user_id, name=req.name)
         self.db.add(project)
         await self.db.commit()

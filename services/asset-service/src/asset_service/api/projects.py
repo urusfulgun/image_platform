@@ -2,17 +2,16 @@
 
 import uuid
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
-from shared_core.utils.endpoint.rs_dpop import validate_dpop
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from asset_service.api.deps import get_local_user
 from asset_service.db.models import UserModel
-from asset_service.db.session import get_db
+from asset_service.dependencies.domain import get_project_service
 from asset_service.domain.projects import ProjectService
-from shared_core.errors import NotFoundError, ForbiddenError
+from shared_core.errors import ForbiddenError, NotFoundError
 from shared_core.models.project import CreateProjectRequest, ProjectSchema
-from asset_service.dependencies.domain import get_image_service, get_project_service
+from shared_core.utils.endpoint.rs_dpop import validate_dpop
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -61,7 +60,7 @@ async def get_project(
     try:
         project = await project_svc.get(project_id=project_id, user_id=user.id)
     except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message)
+        raise HTTPException(status_code=404, detail=e.message) from e
     except ForbiddenError as e:
-        raise HTTPException(status_code=403, detail=e.message)
+        raise HTTPException(status_code=403, detail=e.message) from e
     return ProjectSchema.model_validate(project)

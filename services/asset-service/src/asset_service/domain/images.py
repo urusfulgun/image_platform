@@ -1,17 +1,18 @@
 """Image domain service."""
 
 import logging
-from typing import NamedTuple
 import uuid
-from asset_service.s3.client import get_s3_client
-from shared_core.utils.utc import get_utc_now
+from typing import NamedTuple
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from asset_service.db.models import ImageMetadataModel, ImageProcessingStatusModel
-from shared_core.errors import NotFoundError, ForbiddenError
+from asset_service.s3.client import get_s3_client
+from shared_core.errors import NotFoundError
 from shared_core.models.image import ImageSchemaPreview, RegisterImageRequest
+from shared_core.utils.utc import get_utc_now
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -150,7 +151,7 @@ class ImageService:
         stmt = (
             select(ImageMetadataModel)
             .where(ImageMetadataModel.project_id == project_id)
-            .where(ImageMetadataModel.deleted == False)
+            .where(ImageMetadataModel.deleted.is_(False))
             .options(selectinload(ImageMetadataModel.status))
             .order_by(ImageMetadataModel.created_at.desc())
         )
@@ -200,7 +201,7 @@ class ImageService:
         stmt = select(ImageMetadataModel).where(
             ImageMetadataModel.id == image_id,
             ImageMetadataModel.project_id == project_id,
-            ImageMetadataModel.deleted == False,
+            ImageMetadataModel.deleted.is_(False),
         )
         result = await self.db.execute(stmt)
         image = result.scalar_one_or_none()
@@ -232,7 +233,8 @@ class ImageService:
         project_id: uuid.UUID,
     ) -> ImagesToDelete:
         """
-        Confirmation of soft-deletes of the images that were triggered an asynchronous cleanup via Kafka.
+        Confirmation of soft-deletes of the images that were triggered an
+        asynchronous cleanup via Kafka.
         """
         # 1. Fetch the image
         stmt = select(ImageMetadataModel).where(

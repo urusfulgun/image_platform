@@ -1,5 +1,6 @@
-from asset_service.kafka.producer import AssetKafkaProducer
 from fastapi import Request
+
+from asset_service.kafka.producer import AssetKafkaProducer
 
 
 def get_kafka_producer(request: Request) -> AssetKafkaProducer:

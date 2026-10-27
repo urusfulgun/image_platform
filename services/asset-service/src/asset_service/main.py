@@ -4,8 +4,8 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from asset_service.api.images import router as images_router
 from asset_service.api.projects import router as projects_router

@@ -2,8 +2,10 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
+
 from shared_core.utils.utc import get_utc_now, get_utc_now_iso_format
 
 
@@ -19,7 +21,7 @@ class ImageRawUploadedEvent(BaseModel):
     project_id: uuid.UUID
     raw_s3_path: str
     raw_format: str  # e.g. "jpeg", "png", "webp"
-    file_size_bytes: Optional[int] = None
+    file_size_bytes: int | None = None
     occurred_at: datetime = Field(default_factory=get_utc_now)
 
 

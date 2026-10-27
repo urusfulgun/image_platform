@@ -5,28 +5,26 @@ import uuid
 from pathlib import PurePosixPath
 from typing import Annotated
 
-from fastapi.responses import JSONResponse
-from shared_core.utils.endpoint.rs_dpop import validate_dpop
-from shared_core.utils.s3_object_key import get_s3_object_key
-
-from asset_service.api.schemas import PresignRequest, PresignResponse
-from asset_service.dependencies.clients import get_kafka_producer
-from asset_service.dependencies.domain import get_image_service, get_project_service
-from asset_service.kafka.producer import AssetKafkaProducer
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from asset_service.api.deps import get_local_user
+from asset_service.api.schemas import PresignRequest, PresignResponse
 from asset_service.db.models import ImageMetadataModel, UserModel
+from asset_service.dependencies.clients import get_kafka_producer
+from asset_service.dependencies.domain import get_image_service, get_project_service
 from asset_service.domain.images import ImageService
 from asset_service.domain.projects import ProjectService
+from asset_service.kafka.producer import AssetKafkaProducer
 from asset_service.s3.client import generate_upload_presigned_url
+from shared_core.errors import ForbiddenError, NotFoundError
 from shared_core.events.kafka_events import ImageDeletedEvent, ImageRawUploadedEvent
-from shared_core.errors import NotFoundError, ForbiddenError
 from shared_core.models.image import (
+    ImageSchema,
     ImageSchemaPreview,
     RegisterImageRequest,
-    ImageSchema,
 )
+from shared_core.utils.endpoint.rs_dpop import validate_dpop
+from shared_core.utils.s3_object_key import get_s3_object_key
 
 router = APIRouter(prefix="/projects/{project_id}/images", tags=["images"])
 
@@ -68,7 +66,7 @@ async def list_images(
     try:
         await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e)) from e
     images = await image_svc.list_for_project(project_id)
     return [get_image_schema_from_model(i) for i in images]
 
@@ -89,7 +87,7 @@ async def list_images_preview(
     try:
         await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e)) from e
     images = await image_svc.list_for_project_with_urls(project_id)
     return images
 
@@ -112,7 +110,8 @@ async def get_presigned_upload_url(
 
     Flow:
     1. Create an image_metadata row with PENDING status.
-    2. Generate a pre-signed PUT URL pointing at raw-images/<project_id>/<image_id>/<filename>.
+    2. Generate a pre-signed PUT URL pointing at
+       raw-images/<project_id>/<image_id>/<filename>.
     3. Publish an ImageRawUploadedEvent to Kafka.
     4. Return the pre-signed URL to the browser for direct upload.
     """
@@ -121,11 +120,11 @@ async def get_presigned_upload_url(
     try:
         project = await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e)) from e
 
     # Build S3 object key
     suffix = PurePosixPath(request_body.file_name).suffix.lstrip(".") or "bin"
-    s3_key = get_s3_object_key(project_id, f'normal.{suffix}')
+    s3_key = get_s3_object_key(project_id, f"normal.{suffix}")
 
     log.info(f"Project UUID {project.id}")
 
@@ -171,41 +170,43 @@ async def delete_image(
 ):
     """
     Delete an image from a project.
-    
-    This verifies that the project belongs to the user and that 
+
+    This verifies that the project belongs to the user and that
     the image belongs to the specified project before deletion.
     """
     # 1. Verify project ownership/access
     try:
         await project_svc.get(project_id=project_id, user_id=user.id)
     except (NotFoundError, ForbiddenError) as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
     # 2. Perform deletion
-    # Note: Depending on your ImageService implementation, you might want to 
+    # Note: Depending on your ImageService implementation, you might want to
     # check if the image exists and belongs to project_id first.
     try:
-        images_to_delete = await image_svc.delete(image_id=image_id, project_id=project_id)
-    except NotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"Image {image_id} not found in project {project_id}"
+        images_to_delete = await image_svc.delete(
+            image_id=image_id, project_id=project_id
         )
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image {image_id} not found in project {project_id}",
+        ) from e
     except Exception as e:
         log.error(f"Failed to delete image {image_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="Internal server error during deletion"
-        )
-    
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during deletion",
+        ) from e
+
     event = ImageDeletedEvent(
         image_id=image_id,
         project_id=project_id,
         raw_s3_path=images_to_delete.raw_s3_path,
         processed_s3_path=images_to_delete.processed_s3_path,
-        preview_s3_path=images_to_delete.preview_s3_path
+        preview_s3_path=images_to_delete.preview_s3_path,
     )
-    
+
     # If the DB commit succeeds but Kafka fails, the image is "hidden" from the user,
     # but S3 isn't cleaned up. You might want a periodic reconciliation job for this.
     await kafka_producer.publish_image_deleted_topic(event)

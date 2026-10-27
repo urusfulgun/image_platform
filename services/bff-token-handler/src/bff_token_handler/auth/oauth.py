@@ -1,27 +1,18 @@
 """OAuth2 Authorization Code + PKCE flow helpers."""
 
 import base64
-import hashlib
 import logging
-import os
-import secrets
-from dataclasses import dataclass
-from typing import Literal, Optional
-from urllib.parse import urlencode
-from pydantic import BaseModel, HttpUrl
 
-import httpx
-
-from bff_token_handler.settings import settings, keycloak_config
-from bff_token_handler.auth.dpop import create_dpop_proof, KeyPair, generate_dpop_ath
-from keycloak import KeycloakOpenID, pkce_utils, keycloak_uma, urls_patterns
+from keycloak import KeycloakOpenID, pkce_utils, urls_patterns
 from keycloak import exceptions as kc_exc
+
+from bff_token_handler.auth.dpop import KeyPair, create_dpop_proof, generate_dpop_ath
+from bff_token_handler.settings import keycloak_config, settings
 from shared_core.schemas.security.config import (
     KeyCloakDynamicClientConfig,
     KeyCloakOpenIDConfig,
 )
 from shared_core.schemas.security.token_set import TokenSet
-
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -39,11 +30,11 @@ def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
-def generate_pkce_pair() -> tuple[str, str]:
+def generate_pkce_pair() -> tuple[str, str, str]:
     """Generate a PKCE code_verifier and code_challenge pair.
 
     Returns:
-        (code_verifier, code_challenge) both as strings.
+        (code_verifier, code_challenge, code_challenge_method) all as strings.
     """
     code_challenge_method = settings.pkce_code_challenge_method
     code_verifier = pkce_utils.generate_code_verifier()
@@ -162,20 +153,27 @@ async def dpop_user_info(client: KeycloakOpenID, token: str) -> dict | bytes:
     return res
 
 
-async def clean_bytes(data) -> dict | list | str:
+type JsonValue = dict | list | str | int | float | bool | None
+
+
+def clean_bytes(data: object) -> JsonValue:
+    """Recursively decode bytes to str, leaving other JSON values untouched."""
     if isinstance(data, dict):
         return {k: clean_bytes(v) for k, v in data.items()}
     elif isinstance(data, list):
         return [clean_bytes(i) for i in data]
     elif isinstance(data, bytes):
         return data.decode("utf-8")
-    return data
+    elif data is None or isinstance(data, (str, int, float, bool)):
+        return data
+    else:
+        raise TypeError(f"Expected bytes or a JSON-compatible value. Got {type(data)}")
 
 
 async def introspect_token(
     key_pair: KeyPair,
     access_token: str,
-) -> dict | list | str:
+) -> JsonValue:
     """Call KeyCloak token introspection to get user info claims."""
     ath_claim = generate_dpop_ath(access_token)
     dpop_proof = create_dpop_proof(
@@ -194,15 +192,16 @@ async def introspect_token(
     )
     dynamic_client = await get_dynamic_client(keycloak_config=dynamic_config)
     user_info_encoded: bytes = await dpop_user_info(dynamic_client, access_token)
-    user_info: dict | list | str = await clean_bytes(user_info_encoded)
+    user_info: JsonValue = clean_bytes(user_info_encoded)
     return user_info
 
 
 async def revoke_token_at_keycloak(refresh_token: str, dpop_key_pair: KeyPair) -> None:
-    # Generate the DPoP Proof for the revocation endpoint
+    """End the Keycloak user session (back-channel), invalidating the refresh token."""
+    # The proof's htu must match the endpoint a_logout() posts to
     dpop_proof = create_dpop_proof(
         "POST",
-        settings.keycloak_revocation_url,
+        settings.logout_url,
         dpop_key_pair,
     )
 
@@ -214,4 +213,4 @@ async def revoke_token_at_keycloak(refresh_token: str, dpop_key_pair: KeyPair) -
         custom_headers={"DPoP": dpop_proof},
     )
     dynamic_client = await get_dynamic_client(keycloak_config=dynamic_config)
-    dynamic_client.logout(refresh_token=refresh_token)
+    await dynamic_client.a_logout(refresh_token=refresh_token)

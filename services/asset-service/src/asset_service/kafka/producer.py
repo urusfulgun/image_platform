@@ -39,7 +39,10 @@ class AssetKafkaProducer:
     async def publish_image_raw_presign_link_generated_topic(
         self, event: ImageRawUploadedEvent
     ) -> None:
-        """Publish an ImageRawUploadedEvent to the image.raw.uploading_link_generated topic."""
+        """Publish an ImageRawUploadedEvent.
+
+        Goes to the image.raw.uploading_link_generated topic.
+        """
         await self._producer.send_and_wait(
             settings.image_raw_presign_link_generated_topic,
             value=event.model_dump(mode="json"),

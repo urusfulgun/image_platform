@@ -1,17 +1,19 @@
 import asyncio
 import json
 import logging
+import os
 import signal
-import aioboto3
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from aiobotocore.config import AioConfig
-from shared_core.events.kafka_events import (
-    ImageDeletedEvent,
-    DLQImageProcessingEventPayload,  # Reusing payload for consistency
-)
-from fastapi import FastAPI, Response, status
-import uvicorn
 
+import aioboto3
+import uvicorn
+from aiobotocore.config import AioConfig
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from fastapi import FastAPI, Response, status
+
+from shared_core.events.kafka_events import (
+    DLQImageProcessingEventPayload,  # Reusing payload for consistency
+    ImageDeletedEvent,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("KafkaCleanupWorker")
@@ -29,15 +31,15 @@ async def health_check():
     """
     if not worker_instance:
         return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
-    
+
     # Check if Kafka components are running
     # Note: _closed is an internal state, but useful for basic liveness
     is_consumer_ok = worker_instance.consumer is not None
     is_producer_ok = worker_instance.producer is not None
-    
+
     if is_consumer_ok and is_producer_ok:
         return {"status": "healthy", "worker": "active"}
-    
+
     return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
@@ -143,7 +145,8 @@ class KafkaCleanupWorker:
 
                 for res in results:
                     if isinstance(res, Exception):
-                        # Log error but don't necessarily crash; check S3 404s specifically
+                        # Log error but don't necessarily crash;
+                        # check S3 404s specifically
                         logger.error(f"S3 deletion error for {event.image_id}: {res}")
 
             logger.info(f"Purged S3 assets for image: {event.image_id}")
@@ -168,7 +171,9 @@ async def main():
     )
 
     # Setup FastAPI server to run in the background
-    config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="error")
+    # 0.0.0.0 is required so the health port is reachable from outside the container.
+    health_host = os.getenv("HEALTH_HOST", "0.0.0.0")  # noqa: S104
+    config = uvicorn.Config(app, host=health_host, port=8080, log_level="error")
     server = uvicorn.Server(config)
 
     stop_event = asyncio.Event()
@@ -181,7 +186,7 @@ async def main():
         async with asyncio.TaskGroup() as tg:
             w_task = tg.create_task(worker_instance.run())
             _ = tg.create_task(server.serve())
-            
+
             # Wait until a shutdown signal is received
             await stop_event.wait()
             logger.info("Shutdown signal received.")
@@ -189,8 +194,8 @@ async def main():
             server.should_exit = True
             logger.info("Initiating graceful shutdown...")
             w_task.cancel()
-            
-            # When we exit this block, all remaining tasks (worker/server) 
+
+            # When we exit this block, all remaining tasks (worker/server)
             # are automatically cancelled and awaited.
     except* asyncio.CancelledError:
         # This is expected when we cancel w_task

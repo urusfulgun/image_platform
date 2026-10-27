@@ -1,20 +1,21 @@
 import asyncio
+import contextlib
 import io
 import json
 import logging
 import signal
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from aiobotocore.config import AioConfig
-from PIL import Image, ImageFile
+
 import aioboto3
+from aiobotocore.config import AioConfig
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from PIL import Image, ImageFile
+
 from shared_core.events.kafka_events import (
     DLQImageProcessingEventPayload,
     ImageAvifReadyEvent,
     ImageRawUploadedEvent,
 )
-
 from shared_core.utils.s3_object_key import (
-    get_new_s3_path,
     get_s3_object_key,
 )
 
@@ -59,7 +60,8 @@ class KafkaImageWorker:
         await self.consumer.start()
         await self.producer.start()
         logger.info(
-            f"Processor live. Raw Bucket: {self.raw_bucket} -> Processed Bucket: {self.processed_bucket}"
+            f"Processor live. Raw Bucket: {self.raw_bucket} -> "
+            f"Processed Bucket: {self.processed_bucket}"
         )
 
         try:
@@ -184,10 +186,8 @@ async def main():
         logger.info("Shutdown signal received.")
     finally:
         worker_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await worker_task
-        except asyncio.CancelledError:
-            pass
         logger.info("Worker stopped gracefully.")
 
 

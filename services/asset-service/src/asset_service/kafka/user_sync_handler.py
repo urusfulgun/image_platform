@@ -1,13 +1,13 @@
-from abc import ABC, abstractmethod
 import logging
-
-from shared_core.schemas.debezium.events import KeycloakUserEvent
-from asset_service.db import models
+from abc import ABC, abstractmethod
 
 # from sqlalchemy import insert
 from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from asset_service.db import models
+from shared_core.schemas.debezium.events import KeycloakUserEvent
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +43,8 @@ class UpsertUserHandler(UserSyncHandler):
             # is_enabled=event.enabled,  # Added based on your event logs
         )
 
-        # 3. UPSERT logic: update values ONLY if they changed or aren't null in the event
+        # 3. UPSERT logic: update values ONLY if they changed or aren't null
+        #    in the event
         stmt = stmt.on_conflict_do_update(
             index_elements=["kc_sub"],
             set_={
@@ -60,7 +61,7 @@ class UpsertUserHandler(UserSyncHandler):
 class DeleteUserHandler(UserSyncHandler):
     async def handle(self, event: KeycloakUserEvent, db_session: AsyncSession):
         # Handle the explicit delete operation
-        if event.op == "d" or event.deleted is True:
+        if event.op == "d" or event.deleted:
             log.info(f"🗑️ Deleting user: {event.sub}")
             await db_session.execute(
                 delete(models.UserModel).where(models.UserModel.kc_sub == event.sub)
@@ -74,9 +75,10 @@ class UserEventOrchestrator:
     handlers: list[UserSyncHandler]
 
     def __init__(self):
+        # Delete runs first so a record flagged __deleted is never upserted
         self.handlers = [
-            UpsertUserHandler(),
             DeleteUserHandler(),
+            UpsertUserHandler(),
         ]
 
     async def process(

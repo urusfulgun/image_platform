@@ -1,6 +1,12 @@
 """Pytest configuration for BFF Token Handler tests."""
+
+import os
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+
+# Required setting with no default. Set before any test imports bff_token_handler.
+os.environ.setdefault("CLIENT_SECRET", "test-client-secret")
 
 
 @pytest.fixture

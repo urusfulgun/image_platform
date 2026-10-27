@@ -1,0 +1,5 @@
+# Format-only and mechanical style commits; use with
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: apply ruff format (F5)
+2e7da5d01f4c541ead1873884b1c77e01d1fc537

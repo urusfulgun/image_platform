@@ -1,14 +1,16 @@
 import asyncio
 import json
 import logging
-import signal
 import os
+import signal
+from email.message import EmailMessage
+
+import uvicorn
 from aiokafka import AIOKafkaConsumer
 from aiosmtplib import send
-from email.message import EmailMessage
-from shared_core.events.kafka_events import ImageAvifReadyEvent
 from fastapi import FastAPI, Response, status
-import uvicorn
+
+from shared_core.events.kafka_events import ImageAvifReadyEvent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("NotificationWorker")
@@ -18,6 +20,7 @@ logger = logging.getLogger("NotificationWorker")
 app = FastAPI()
 worker_instance = None  # Global reference for the health check to inspect
 
+
 @app.get("/health")
 async def health_check():
     """
@@ -25,14 +28,14 @@ async def health_check():
     """
     if not worker_instance:
         return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
-    
+
     # Check if Kafka components are running
     # Note: _closed is an internal state, but useful for basic liveness
     is_consumer_ok = worker_instance.consumer is not None
-    
+
     if is_consumer_ok:
         return {"status": "healthy", "worker": "active"}
-    
+
     return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
@@ -59,7 +62,8 @@ class NotificationWorker:
     async def run(self):
         await self.consumer.start()
         logger.info(
-            f"Notification Worker live. Connected to Mailpit at {self.smtp_host}:{self.smtp_port}"
+            "Notification Worker live. Connected to Mailpit at "
+            f"{self.smtp_host}:{self.smtp_port}"
         )
 
         try:
@@ -121,7 +125,9 @@ async def main():
     )
 
     # Setup FastAPI server to run in the background
-    config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="error")
+    # 0.0.0.0 is required so the health port is reachable from outside the container.
+    health_host = os.getenv("HEALTH_HOST", "0.0.0.0")  # noqa: S104
+    config = uvicorn.Config(app, host=health_host, port=8080, log_level="error")
     server = uvicorn.Server(config)
 
     stop_event = asyncio.Event()
@@ -135,7 +141,7 @@ async def main():
         async with asyncio.TaskGroup() as tg:
             w_task = tg.create_task(worker_instance.run())
             _ = tg.create_task(server.serve())
-            
+
             # Wait until a shutdown signal is received
             await stop_event.wait()
             logger.info("Shutdown signal received.")
@@ -143,8 +149,8 @@ async def main():
             server.should_exit = True
             logger.info("Initiating graceful shutdown...")
             w_task.cancel()
-            
-            # When we exit this block, all remaining tasks (worker/server) 
+
+            # When we exit this block, all remaining tasks (worker/server)
             # are automatically cancelled and awaited.
     except* asyncio.CancelledError:
         # This is expected when we cancel w_task

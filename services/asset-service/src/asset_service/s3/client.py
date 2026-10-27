@@ -1,7 +1,6 @@
 """S3 client wrapper for RustFS (S3-compatible)."""
 
 import logging
-from typing import Optional
 
 import boto3
 from botocore.config import Config
@@ -31,10 +30,10 @@ def get_s3_client():
     s3 = boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint_url,
-        aws_access_key_id="OAhzGogEY7X61ZwjnSmH",
-        aws_secret_access_key="5XItB3Pon6syp7e1cxNvJOTfWlzigEZQkK2FM8Vh",
+        aws_access_key_id=settings.s3_access_key,
+        aws_secret_access_key=settings.s3_secret_key,
         config=Config(signature_version="s3v4"),
-        region_name="us-east-1",
+        region_name=settings.s3_region,
     )
     return s3
 
@@ -78,7 +77,7 @@ def generate_upload_presigned_url(
 
 
 def generate_download_presigned_url(
-    key: str, bucket: Optional[str] = None, expiry: int = 3600
+    key: str, bucket: str | None = None, expiry: int = 3600
 ) -> str:
     """Generate a pre-signed URL for downloading a processed image."""
     client = get_s3_client()

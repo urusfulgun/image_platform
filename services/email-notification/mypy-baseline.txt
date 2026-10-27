@@ -1,0 +1,8 @@
+# mypy errors accepted for now (roadmap F6). Regenerate with --update.
+src/email_notification/main.py: error: Call to untyped function "main" in typed context  [no-untyped-call]
+src/email_notification/main.py: error: Call to untyped function "run" in typed context  [no-untyped-call]
+src/email_notification/main.py: error: Function is missing a return type annotation  [no-untyped-def]
+src/email_notification/main.py: error: Function is missing a return type annotation  [no-untyped-def]
+src/email_notification/main.py: error: Function is missing a return type annotation  [no-untyped-def]
+src/email_notification/main.py: error: Function is missing a return type annotation  [no-untyped-def]
+tests/fakes.py: error: Need type annotation for "calls" (hint: "calls: list[<type>] = ...")  [var-annotated]

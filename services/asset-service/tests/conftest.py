@@ -1,7 +1,15 @@
 """Pytest configuration for AssetService tests."""
-import pytest
+
+import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+# Required settings with no default. Set before any test imports asset_service.
+os.environ.setdefault("S3_ACCESS_KEY", "test-access-key")
+os.environ.setdefault("S3_SECRET_KEY", "test-secret-key")
+os.environ.setdefault("RUSTFS_WEBHOOK_TOKEN", "test-webhook-token")
 
 
 @pytest.fixture

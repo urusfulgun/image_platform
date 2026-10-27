@@ -16,11 +16,56 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "mypy>=2.4",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.1.0",
     "pytest-mock>=3.15.1",
 ]
 
 [build-system]
 requires = ["uv_build>=0.10.4,<0.11.0"]
 build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra"]
+strict_markers = true
+strict_config = true
+xfail_strict = true
+markers = [
+    "known_bug: characterization test pinning current buggy behaviour; the comment names the roadmap item that changes it",
+]
+
+[tool.coverage.run]
+source = ["shared_core"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 64
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unused_configs = true
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+explicit_package_bases = true
+mypy_path = ["src"]
+
+[[tool.mypy.overrides]]
+# Tests are type-checked but don't need annotations.
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+check_untyped_defs = true

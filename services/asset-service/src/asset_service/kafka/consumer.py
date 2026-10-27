@@ -9,12 +9,12 @@ import json
 import logging
 
 from aiokafka import AIOKafkaConsumer
-from asset_service.kafka.user_sync_handler import UserEventOrchestrator
 from pydantic import ValidationError
-from shared_core.schemas.debezium.events import KeycloakUserEvent
-from asset_service.db.session import AsyncSessionLocal
-from asset_service.settings import settings
 
+from asset_service.db.session import AsyncSessionLocal
+from asset_service.kafka.user_sync_handler import UserEventOrchestrator
+from asset_service.settings import settings
+from shared_core.schemas.debezium.events import KeycloakUserEvent
 
 log = logging.getLogger(__name__)
 
@@ -42,9 +42,10 @@ async def consume_user_events():
                 data = json.loads(raw_data)
                 event = KeycloakUserEvent.model_validate(data)
 
-                if event.email is None and event.op != 'd':
+                if event.email is None and event.op != "d":
                     log.info(
-                        f"✅ Pass event {correlation_id} for user {event.sub}, because email is None in event."
+                        f"✅ Pass event {correlation_id} for user {event.sub}, "
+                        "because email is None in event."
                     )
                     continue
 
@@ -62,7 +63,7 @@ async def consume_user_events():
                 log.error(
                     f"❌ Schema validation failed at {correlation_id}: {ve.json()}"
                 )
-            except Exception as e:
+            except Exception:
                 # exc_info=True includes the stack trace automatically
                 log.error(
                     f"❌ Unexpected error processing event {correlation_id}",
