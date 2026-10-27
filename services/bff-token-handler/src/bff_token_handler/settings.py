@@ -1,11 +1,23 @@
 """BFF Token Handler settings."""
 
+from pathlib import Path
+
+from pydantic_settings import SettingsConfigDict
 from shared_core.schemas.security.config import KeyCloakOpenIDConfig
 from shared_core.settings import BaseAppSettings
+
+# Docker secrets mount; one file per field (e.g. /run/secrets/client_secret).
+SECRETS_DIR = Path("/run/secrets")
 
 
 class BffSettings(BaseAppSettings):
     """Configuration for the BFF Token Handler service."""
+
+    # Merged with BaseAppSettings.model_config by pydantic.
+    model_config = SettingsConfigDict(
+        # Only when mounted, so local runs and tests don't warn about a missing dir.
+        secrets_dir=SECRETS_DIR if SECRETS_DIR.is_dir() else None,
+    )
 
     base_url: str = "http://localhost:80"
 
@@ -15,7 +27,8 @@ class BffSettings(BaseAppSettings):
     client_id: str = "bff-client"
     # public_client_id: str = "bff-client"
     public_client_id: str = "frontend-client"
-    client_secret: str = "dev-bff-client-secret"
+    # Required: env CLIENT_SECRET or the secrets file /run/secrets/client_secret.
+    client_secret: str
     redirect_uri: str = "http://localhost:80/api/authorization-code/callback"
 
     # Redis session store

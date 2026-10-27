@@ -14,7 +14,7 @@ Spec: [spec.md](spec.md)
   - fake env in `tests/conftest.py`; `helpers.WEBHOOK_TOKEN` reads it
   - flip the R2 part of the any-scheme test
   - add `RUSTFS_WEBHOOK_TOKEN` to compose
-- [ ] 7. BFF secret:
+- [x] 7. BFF secret:
   - make `client_secret` required, with `secrets_dir="/run/secrets"`
   - compose secret `target: client_secret`, and drop `CLIENT_SECRET_FILE`
   - fake env in `tests/conftest.py`

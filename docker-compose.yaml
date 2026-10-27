@@ -297,7 +297,6 @@ services:
       - KEYCLOAK_URL=http://keycloak:8080
       - REALM=image-platform
       - CLIENT_ID=bff-client
-      - CLIENT_SECRET_FILE=/run/secrets/bff_client_secret
       - REDIRECT_URI=http://localhost:80/api/authorization-code/callback
       - REDIS_URL=redis://redis-session:6379/0
       - ASSET_SERVICE_URL=http://asset-service:8000
@@ -313,7 +312,9 @@ services:
     ports:
       - "8000:8000"
     secrets:
-      - bff_client_secret
+      # Read by BffSettings as /run/secrets/client_secret.
+      - source: bff_client_secret
+        target: client_secret
     networks:
       - image-platform-network
     healthcheck:
