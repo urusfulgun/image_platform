@@ -21,7 +21,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [ ] F13 [M] Upgrade Debezium to 3.x (quay.io) and re-test the `keycloak-user-sync` connector
 - [ ] F14 [S] Replace `provectuslabs/kafka-ui` with `kafbat/kafka-ui`
 - [ ] F15 [S] Drop `pillow-avif-plugin` and use Pillow's built-in AVIF support
-- [ ] F16 [S] Fix the init SQL (missing commas) so a fresh install works
+- [x] F16 [S] Fix the init SQL (missing commas) so a fresh install works
 - [ ] F17 [M] End-to-end smoke test against the running stack (pytest + Playwright): login through Keycloak and the BFF, upload an image until it is `OPTIMIZED`, and check each worker's `/health`. Credentials come from env until N9.
 
 ## Phase 2: Refactors
