@@ -8,7 +8,7 @@ Items run in order within each phase. Characterization tests come first so that 
 
 - [x] F1 [M] Characterization tests for the asset-service API: projects, presign, delete and the RustFS callback
 - [x] F2 [M] Characterization tests for the BFF: login, callback, `/me` and the proxy, including current header forwarding
-- [ ] F3 [S] Characterization tests for `rs_dpop` token and DPoP validation
+- [x] F3 [S] Characterization tests for `rs_dpop` token and DPoP validation
 - [ ] F4 [M] First tests for the email-notification and cleanup-buckets workers
 - [ ] F5 [S] Shared root `ruff.toml`, with existing findings fixed
 - [ ] F6 [M] `mypy --strict` config per service, with the current errors recorded as a baseline
@@ -29,7 +29,7 @@ Items run in order within each phase. Characterization tests come first so that 
 - [ ] R2 [M] Load secrets from files or env; remove the hardcoded BFF client secret, S3 keys, webhook token and DB URL
 - [ ] R3 [S] Stop logging tokens, cookies, PKCE values and full request headers
 - [ ] R4 [S] RustFS webhook auth: secret from env, constant-time compare, 403 on malformed headers
-- [ ] R5 [M] Harden `rs_dpop`: check `iss`/`aud`, enforce an `iat` window, add a `jti` replay cache, and fix the `htu` query-string mismatch
+- [ ] R5 [M] Harden `rs_dpop`: check `iss`/`aud`, enforce an `iat` window, add a `jti` replay cache, check `typ`, fix the `htu` query-string mismatch, and return generic 401 details without re-wrapping
 - [ ] R6 [M] BFF refreshes the access token before proxying
 - [ ] R7 [M] Async Keycloak calls in the BFF and a cached JWKS in `rs_dpop`
 - [ ] R8 [S] An expired session returns 401 instead of 500; the PKCE state is single-use
